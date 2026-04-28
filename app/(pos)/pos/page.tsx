@@ -65,6 +65,7 @@ export default function POSPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [showMobileCart, setShowMobileCart] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const productsCountRef = useRef(0);
 
@@ -614,11 +615,27 @@ export default function POSPage() {
         </div>
       </div>
 
+      {/* Mobile floating cart button */}
+      <button
+        onClick={() => setShowMobileCart(true)}
+        className="lg:hidden fixed bottom-6 end-6 z-40 flex items-center gap-2 bg-brand-500 text-white rounded-2xl px-4 py-3 shadow-xl font-bold text-sm"
+      >
+        <ShoppingCart size={20} />
+        {cart.length > 0 && (
+          <span className="bg-white text-brand-500 rounded-full w-5 h-5 flex items-center justify-center text-xs font-black">
+            {cart.length}
+          </span>
+        )}
+        السلة
+      </button>
+
       <CartPanel
         currency={currency}
-        onCheckout={() => setShowPayment(true)}
+        onCheckout={() => { setShowMobileCart(false); setShowPayment(true); }}
         branchId={branchId}
         tenantId={tenantId}
+        isMobileOpen={showMobileCart}
+        onMobileClose={() => setShowMobileCart(false)}
       />
 
       {scanning && <BarcodeScanner autoStart onScan={handleBarcodeScanned} onClose={() => setScanning(false)} />}

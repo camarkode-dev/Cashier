@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useAuthStore } from '@/stores/auth.store';
 import { useSettingsStore } from '@/stores/settings.store';
-import { Users, Plus, Edit2, Shield, UserCheck, KeyRound, Eye, EyeOff } from 'lucide-react';
+import { Users, Plus, Edit2, Shield, UserCheck, UserX, Trash2, Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
 import { apiClient } from '@/lib/api';
@@ -19,16 +19,11 @@ interface User {
 }
 
 const ROLES = [
-  { id: 'ADMIN', label: 'مدير', color: 'text-blue-600 bg-blue-50 dark:bg-blue-950' },
-  { id: 'CASHIER', label: 'كاشير', color: 'text-green-600 bg-green-50 dark:bg-green-950' },
+  { id: 'ADMIN', label: 'مدير' },
+  { id: 'CASHIER', label: 'كاشير' },
 ];
 
-const ROLE_LABEL: Record<string, string> = {
-  OWNER: 'مالك',
-  ADMIN: 'مدير',
-  CASHIER: 'كاشير',
-};
-
+const ROLE_LABEL: Record<string, string> = { OWNER: 'مالك', ADMIN: 'مدير', CASHIER: 'كاشير' };
 const ROLE_COLOR: Record<string, string> = {
   OWNER: 'text-purple-600 bg-purple-50 dark:bg-purple-950',
   ADMIN: 'text-blue-600 bg-blue-50 dark:bg-blue-950',
@@ -63,19 +58,19 @@ export default function UsersPage() {
     }
   };
 
-  useEffect(() => {
-    load();
-  }, []);
+  useEffect(() => { load(); }, []);
 
   const openAdd = () => {
     setEditUser(null);
     setForm({ firstName: '', lastName: '', email: '', password: '', role: 'CASHIER', branchId: activeBranchId || '' });
+    setShowPassword(false);
     setShowForm(true);
   };
 
   const openEdit = (user: User) => {
     setEditUser(user);
     setForm({ firstName: user.firstName, lastName: user.lastName, email: user.email, password: '', role: user.role, branchId: user.branchId || '' });
+    setShowPassword(false);
     setShowForm(true);
   };
 
@@ -91,12 +86,8 @@ export default function UsersPage() {
           branchId: form.branchId || undefined,
         });
       } else {
-        await apiClient.post('/users', {
-          ...form,
-          branchId: form.branchId || undefined,
-        });
+        await apiClient.post('/users', { ...form, branchId: form.branchId || undefined });
       }
-
       toast.success('تم الحفظ');
       setShowForm(false);
       await load();
@@ -108,12 +99,25 @@ export default function UsersPage() {
   };
 
   const handleToggleActive = async (user: User) => {
+    const action = user.isActive ? 'إيقاف' : 'تفعيل';
+    if (!confirm(`هل تريد ${action} حساب ${user.firstName} ${user.lastName}؟`)) return;
     try {
       await apiClient.patch(`/users/${user.id}`, { isActive: !user.isActive });
-      toast.success('تم الحفظ');
+      toast.success(`تم ${action} الحساب`);
       await load();
     } catch (error: any) {
       toast.error(error?.message || 'فشل التعديل');
+    }
+  };
+
+  const handleDelete = async (user: User) => {
+    if (!confirm(`حذف نهائي لحساب ${user.firstName} ${user.lastName}؟\nلن يتمكن من تسجيل الدخول مجدداً وسيُحفظ سجل مبيعاته.`)) return;
+    try {
+      await apiClient.delete(`/users/${user.id}`);
+      toast.success('تم الحذف');
+      await load();
+    } catch (error: any) {
+      toast.error(error?.message || 'فشل الحذف');
     }
   };
 
@@ -174,41 +178,75 @@ export default function UsersPage() {
                   </td>
                 </tr>
               ) : (
-                users.map((user) => (
-                  <tr key={user.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
-                    <td className="p-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-2xl bg-brand-100 dark:bg-brand-950 flex items-center justify-center text-brand-500 font-bold text-sm">
-                          {user.firstName[0]}{user.lastName[0]}
-                        </div>
-                        <div>
-                          <p className="font-semibold text-gray-900 dark:text-white text-sm">{user.firstName} {user.lastName}</p>
-                          {user.id === currentUser?.id && <span className="text-xs text-brand-500">أنت</span>}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="p-4 text-sm text-gray-500 dir-ltr">{user.email}</td>
-                    <td className="p-4">
-                      <span className={cn('px-2.5 py-1 rounded-lg text-xs font-bold', ROLE_COLOR[user.role])}>{ROLE_LABEL[user.role]}</span>
-                    </td>
-                    <td className="p-4 text-sm text-gray-500">{user.branch?.nameAr || user.branch?.name || '—'}</td>
-                    <td className="p-4 text-center">
-                      <span className={cn('px-2.5 py-1 rounded-lg text-xs font-bold', user.isActive ? 'text-green-600 bg-green-50 dark:bg-green-950' : 'text-gray-400 bg-gray-100 dark:bg-gray-800')}>{user.isActive ? 'نشط' : 'موقوف'}</span>
-                    </td>
-                    {isOwner && (
+                users.map((user) => {
+                  const isSelf = user.id === currentUser?.id;
+                  const isOwnerUser = user.role === 'OWNER';
+                  return (
+                    <tr key={user.id} className={cn('hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors', !user.isActive && 'opacity-50')}>
                       <td className="p-4">
-                        <div className="flex items-center justify-center gap-1.5">
-                          <button onClick={() => openEdit(user)} disabled={user.id === currentUser?.id} className="p-1.5 rounded-lg hover:bg-brand-50 dark:hover:bg-brand-950 text-brand-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors" title="تعديل">
-                            <Edit2 size={15} />
-                          </button>
-                          <button onClick={() => handleToggleActive(user)} disabled={user.id === currentUser?.id || user.role === 'OWNER'} className={cn('p-1.5 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed', user.isActive ? 'hover:bg-red-50 dark:hover:bg-red-950 text-red-400' : 'hover:bg-green-50 dark:hover:bg-green-950 text-green-500')} title={user.isActive ? 'إيقاف الحساب' : 'تفعيل الحساب'}>
-                            <UserCheck size={15} />
-                          </button>
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-2xl bg-brand-100 dark:bg-brand-950 flex items-center justify-center text-brand-500 font-bold text-sm">
+                            {user.firstName[0]}{user.lastName[0]}
+                          </div>
+                          <div>
+                            <p className="font-semibold text-gray-900 dark:text-white text-sm">{user.firstName} {user.lastName}</p>
+                            {isSelf && <span className="text-xs text-brand-500">أنت</span>}
+                          </div>
                         </div>
                       </td>
-                    )}
-                  </tr>
-                ))
+                      <td className="p-4 text-sm text-gray-500 dir-ltr">{user.email}</td>
+                      <td className="p-4">
+                        <span className={cn('px-2.5 py-1 rounded-lg text-xs font-bold', ROLE_COLOR[user.role])}>{ROLE_LABEL[user.role]}</span>
+                      </td>
+                      <td className="p-4 text-sm text-gray-500">{user.branch?.nameAr || user.branch?.name || '—'}</td>
+                      <td className="p-4 text-center">
+                        <span className={cn('px-2.5 py-1 rounded-lg text-xs font-bold', user.isActive ? 'text-green-600 bg-green-50 dark:bg-green-950' : 'text-gray-400 bg-gray-100 dark:bg-gray-800')}>
+                          {user.isActive ? 'نشط' : 'موقوف'}
+                        </span>
+                      </td>
+                      {isOwner && (
+                        <td className="p-4">
+                          <div className="flex items-center justify-center gap-1">
+                            {/* Edit */}
+                            <button
+                              onClick={() => openEdit(user)}
+                              disabled={isSelf}
+                              className="p-1.5 rounded-lg hover:bg-brand-50 dark:hover:bg-brand-950 text-brand-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                              title="تعديل"
+                            >
+                              <Edit2 size={15} />
+                            </button>
+
+                            {/* Toggle active / deactivate */}
+                            <button
+                              onClick={() => handleToggleActive(user)}
+                              disabled={isSelf || isOwnerUser}
+                              className={cn(
+                                'p-1.5 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed',
+                                user.isActive
+                                  ? 'hover:bg-amber-50 dark:hover:bg-amber-950 text-amber-500'
+                                  : 'hover:bg-green-50 dark:hover:bg-green-950 text-green-500',
+                              )}
+                              title={user.isActive ? 'إيقاف الحساب' : 'تفعيل الحساب'}
+                            >
+                              {user.isActive ? <UserX size={15} /> : <UserCheck size={15} />}
+                            </button>
+
+                            {/* Delete */}
+                            <button
+                              onClick={() => handleDelete(user)}
+                              disabled={isSelf || isOwnerUser}
+                              className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950 text-red-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                              title="حذف الحساب"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -235,9 +273,17 @@ export default function UsersPage() {
               )}
               {!editUser && (
                 <div>
-                  <label className="label">كلمة المرور *</label>
+                  <label className="label">كلمة المرور * (8 أحرف على الأقل)</label>
                   <div className="relative">
-                    <input className="input pe-10" type={showPassword ? 'text' : 'password'} value={form.password} onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))} required minLength={6} dir="ltr" />
+                    <input
+                      className="input pe-10"
+                      type={showPassword ? 'text' : 'password'}
+                      value={form.password}
+                      onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+                      required
+                      minLength={8}
+                      dir="ltr"
+                    />
                     <button type="button" onClick={() => setShowPassword((v) => !v)} className="absolute end-3 top-1/2 -translate-y-1/2 text-gray-400">
                       {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                     </button>

@@ -74,6 +74,14 @@ class EscPos {
   }
 }
 
+function paymentLabel(method: string): string {
+  const m: Record<string, string> = {
+    CASH: 'نقدي', CARD: 'بطاقة', MOBILE: 'محفظة إلكترونية',
+    QR: 'رمز QR', SPLIT: 'دفع مقسم', CREDIT: 'آجل',
+  };
+  return m[method] || method;
+}
+
 export class ThermalPrinter {
   private device: any = null;
   private endpoint: any = null;
@@ -171,6 +179,7 @@ export class ThermalPrinter {
     pos.bold(false).size(1, 1);
     pos.line(`المدفوع: ${data.paidAmount.toFixed(2)} ${cur}`);
     if (data.changeAmount > 0) pos.line(`المتبقي: ${data.changeAmount.toFixed(2)} ${cur}`);
+    pos.line(`طريقة الدفع: ${paymentLabel(data.paymentMethod)}`);
 
     // Loyalty
     if (data.loyaltyPoints) pos.line(`نقاط الولاء: ${data.loyaltyPoints} نقطة`);
@@ -178,6 +187,11 @@ export class ThermalPrinter {
     pos.divider('=', width);
     pos.align('center').line('شكراً لتسوقكم معنا');
     if (data.footer) pos.line(data.footer);
+
+    // Barcode (invoice number as text barcode representation)
+    pos.feed(1).divider('-', width);
+    pos.align('center').line('* ' + data.invoiceNumber + ' *');
+    pos.divider('-', width);
 
     pos.feed(4).cut();
     return pos.getBytes();
@@ -191,49 +205,127 @@ export class ThermalPrinter {
   private printViaBrowser(data: ReceiptData) {
     const width = data.paperSize === '80mm' ? '80mm' : '58mm';
     const cur = data.currency || 'EGP';
-    const html = `
+
+    const headerLogoSvg = `<svg width="52" height="52" viewBox="0 0 320 320" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="160" cy="160" r="160" fill="#000"/>
+      <g stroke="#fff" stroke-width="22" stroke-linecap="round" stroke-linejoin="round" fill="none">
+        <path d="M67 258V117L161 41L253 121"/>
+        <path d="M69 259H223"/>
+      </g>
+      <g fill="#fff">
+        <text x="90" y="219" font-family="Impact,Arial Black,sans-serif" font-size="126" font-weight="900" transform="skewX(-11)">A</text>
+        <text x="171" y="220" font-family="Impact,Arial Black,sans-serif" font-size="128" font-weight="900" transform="skewX(-6)">H</text>
+      </g>
+    </svg>`;
+
+    // Small logo for QR center overlay (28×28, white bg for contrast)
+    const qrLogoSvg = `<svg width="28" height="28" viewBox="0 0 320 320" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="160" cy="160" r="160" fill="#000"/>
+      <g stroke="#fff" stroke-width="24" stroke-linecap="round" stroke-linejoin="round" fill="none">
+        <path d="M67 258V117L161 41L253 121"/>
+        <path d="M69 259H223"/>
+      </g>
+      <g fill="#fff">
+        <text x="90" y="219" font-family="Impact,Arial Black,sans-serif" font-size="126" font-weight="900" transform="skewX(-11)">A</text>
+        <text x="171" y="220" font-family="Impact,Arial Black,sans-serif" font-size="128" font-weight="900" transform="skewX(-6)">H</text>
+      </g>
+    </svg>`;
+
+    const html = `<!DOCTYPE html>
       <html dir="rtl"><head>
       <meta charset="utf-8">
+      <link rel="preconnect" href="https://fonts.googleapis.com">
+      <link href="https://fonts.googleapis.com/css2?family=Libre+Barcode+128+Text&display=swap" rel="stylesheet">
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"><\/script>
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Cairo', Arial, sans-serif; width: ${width}; font-size: 12px; }
+        body { font-family: 'Cairo', Arial, sans-serif; width: ${width}; font-size: 12px; color: #000; background: #fff; }
         .center { text-align: center; }
         .bold { font-weight: bold; }
         .large { font-size: 16px; }
-        .divider { border-top: 1px dashed #000; margin: 4px 0; }
-        .row { display: flex; justify-content: space-between; }
-        .item-name { font-size: 11px; }
+        .divider { border-top: 1px dashed #000; margin: 5px 0; }
+        .divider-solid { border-top: 1px solid #000; margin: 5px 0; }
+        .row { display: flex; justify-content: space-between; padding: 1px 0; }
+        .item-name { font-size: 11px; font-weight: 600; }
+        .logo-wrap { display: flex; flex-direction: column; align-items: center; gap: 3px; margin-bottom: 4px; }
+        .store-name { font-size: 17px; font-weight: 900; letter-spacing: -0.3px; }
+        .store-sub { font-size: 11px; color: #333; }
+        .payment-badge { display: inline-block; border: 1px solid #000; border-radius: 4px; padding: 1px 8px; font-size: 11px; font-weight: 700; margin-top: 3px; }
+        .barcode-font { font-family: 'Libre Barcode 128 Text', cursive; font-size: 52px; letter-spacing: 2px; line-height: 1; }
+        .barcode-num { font-size: 10px; letter-spacing: 2px; color: #333; margin-top: 2px; }
+        .qr-section { display: flex; flex-direction: column; align-items: center; margin-top: 12px; gap: 4px; }
+        .qr-wrap { position: relative; display: inline-block; }
+        .qr-logo { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); background: #fff; padding: 3px; border-radius: 5px; line-height: 0; }
+        .qr-hint { font-size: 10px; color: #444; letter-spacing: 0.3px; }
+        .qr-url { font-size: 11px; font-weight: 700; color: #000; }
+        @media print { body { margin: 0; } }
       </style></head><body>
-      <div class="center bold large">${data.storeNameAr || data.storeName}</div>
-      ${data.storeAddress ? `<div class="center">${data.storeAddress}</div>` : ''}
-      ${data.storePhone ? `<div class="center">هاتف: ${data.storePhone}</div>` : ''}
-      <div class="divider"></div>
-      <div>رقم الفاتورة: ${data.invoiceNumber}</div>
-      <div>التاريخ: ${data.date}</div>
-      <div>الكاشير: ${data.cashierName}</div>
-      ${data.customerName ? `<div>العميل: ${data.customerName}</div>` : ''}
+      <div class="logo-wrap">
+        ${headerLogoSvg}
+        <div class="store-name">${data.storeNameAr || data.storeName}</div>
+        ${data.storeAddress ? `<div class="store-sub">${data.storeAddress}</div>` : ''}
+        ${data.storePhone ? `<div class="store-sub">هاتف: ${data.storePhone}</div>` : ''}
+      </div>
+      <div class="divider-solid"></div>
+      <div class="row"><span>رقم الفاتورة</span><span style="font-family:monospace;font-weight:700">${data.invoiceNumber}</span></div>
+      <div class="row"><span>التاريخ</span><span>${data.date}</span></div>
+      <div class="row"><span>الكاشير</span><span>${data.cashierName}</span></div>
+      ${data.branchName ? `<div class="row"><span>الفرع</span><span>${data.branchName}</span></div>` : ''}
+      ${data.customerName ? `<div class="row"><span>العميل</span><span>${data.customerName}</span></div>` : ''}
       <div class="divider"></div>
       ${data.items.map((i) => `
         <div class="item-name">${i.nameAr || i.name}</div>
-        <div class="row"><span>${i.quantity} × ${i.unitPrice.toFixed(2)}</span><span>${i.total.toFixed(2)} ${cur}</span></div>
-        ${i.discountAmount ? `<div>خصم: -${i.discountAmount.toFixed(2)}</div>` : ''}
+        <div class="row"><span style="color:#555">${i.quantity} × ${i.unitPrice.toFixed(2)}</span><span class="bold">${i.total.toFixed(2)} ${cur}</span></div>
+        ${i.discountAmount && i.discountAmount > 0 ? `<div style="color:#555;font-size:11px">خصم: -${i.discountAmount.toFixed(2)}</div>` : ''}
       `).join('')}
       <div class="divider"></div>
-      ${data.discountAmount > 0 ? `<div class="row"><span>الخصم</span><span>-${data.discountAmount.toFixed(2)}</span></div>` : ''}
-      ${data.taxAmount > 0 ? `<div class="row"><span>الضريبة</span><span>${data.taxAmount.toFixed(2)}</span></div>` : ''}
-      <div class="row bold large"><span>الإجمالي</span><span>${data.total.toFixed(2)} ${cur}</span></div>
+      ${data.discountAmount > 0 ? `<div class="row" style="color:#555"><span>الخصم</span><span>-${data.discountAmount.toFixed(2)} ${cur}</span></div>` : ''}
+      ${data.taxAmount > 0 ? `<div class="row" style="color:#555"><span>الضريبة</span><span>${data.taxAmount.toFixed(2)} ${cur}</span></div>` : ''}
+      <div class="row bold large" style="border-top:2px solid #000;margin-top:4px;padding-top:4px"><span>الإجمالي</span><span>${data.total.toFixed(2)} ${cur}</span></div>
       <div class="row"><span>المدفوع</span><span>${data.paidAmount.toFixed(2)} ${cur}</span></div>
       ${data.changeAmount > 0 ? `<div class="row"><span>المتبقي</span><span>${data.changeAmount.toFixed(2)} ${cur}</span></div>` : ''}
+      <div class="center" style="margin-top:4px"><span class="payment-badge">${paymentLabel(data.paymentMethod)}</span></div>
+      <div class="divider" style="margin-top:8px"></div>
+      <div class="center" style="margin:6px 0 2px">شكراً لتسوقكم معنا</div>
       <div class="divider"></div>
-      <div class="center">شكراً لتسوقكم معنا</div>
-      </body></html>
-    `;
-    const win = window.open('', '_blank', `width=350,height=600`);
+      <div class="center" style="margin-top:6px">
+        <div class="barcode-font">${data.invoiceNumber}</div>
+        <div class="barcode-num">${data.invoiceNumber}</div>
+      </div>
+      <div class="divider" style="margin-top:10px"></div>
+      <div class="qr-section">
+        <div class="qr-hint">امسح لزيارة موقعنا</div>
+        <div class="qr-wrap">
+          <div id="qr-canvas"></div>
+          <div class="qr-logo">${qrLogoSvg}</div>
+        </div>
+        <div class="qr-url">Awlad-Ayman.com</div>
+      </div>
+      <script>
+        (function() {
+          function generate() {
+            if (typeof QRCode === 'undefined') { setTimeout(generate, 100); return; }
+            new QRCode(document.getElementById('qr-canvas'), {
+              text: 'https://Awlad-Ayman.com',
+              width: 150,
+              height: 150,
+              colorDark: '#000000',
+              colorLight: '#ffffff',
+              correctLevel: QRCode.CorrectLevel.H
+            });
+          }
+          generate();
+        })();
+      <\/script>
+      </body></html>`;
+
+    const win = window.open('', '_blank', `width=400,height=750`);
     if (win) {
       win.document.write(html);
       win.document.close();
       win.focus();
-      setTimeout(() => { win.print(); win.close(); }, 500);
+      // Wait for QRCode.js + barcode font to load before printing
+      setTimeout(() => { win.print(); win.close(); }, 1800);
     }
   }
 

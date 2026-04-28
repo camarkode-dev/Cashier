@@ -32,6 +32,7 @@ export default function ProductsPage() {
   const [activeCategory, setActiveCategory] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
+  const [showSearchScanner, setShowSearchScanner] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [form, setForm] = useState(emptyForm);
 
@@ -159,9 +160,19 @@ export default function ProductsPage() {
       </div>
 
       <div className="flex gap-3 flex-wrap">
-        <div className="relative flex-1 min-w-48">
-          <Search size={16} className="absolute start-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input className="input ps-9" placeholder="بحث..." value={search} onChange={(e) => setSearch(e.target.value)} />
+        <div className="relative flex-1 min-w-48 flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search size={16} className="absolute start-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input className="input ps-9" placeholder="بحث بالاسم أو الباركود..." value={search} onChange={(e) => setSearch(e.target.value)} />
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowSearchScanner(true)}
+            className="p-2.5 rounded-xl bg-brand-50 dark:bg-brand-950 text-brand-500 hover:bg-brand-100 dark:hover:bg-brand-900 transition-colors flex-shrink-0"
+            title="مسح باركود للبحث"
+          >
+            <ScanLine size={18} />
+          </button>
         </div>
         <select className="input w-auto" value={activeCategory} onChange={(e) => setActiveCategory(e.target.value)}>
           <option value="">كل الفئات</option>
@@ -253,6 +264,13 @@ export default function ProductsPage() {
           )}
         </div>
       </div>
+
+      {showSearchScanner && (
+        <BarcodeScanner
+          onScan={(code) => { setSearch(code); setShowSearchScanner(false); }}
+          onClose={() => setShowSearchScanner(false)}
+        />
+      )}
 
       {showForm && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">

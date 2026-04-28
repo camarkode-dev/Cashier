@@ -121,7 +121,9 @@ export const createUserSchema = z.object({
   phone: z.string().optional(),
 });
 
-export const updateUserSchema = createUserSchema.partial().omit({ password: true, email: true });
+export const updateUserSchema = createUserSchema.partial().omit({ password: true, email: true }).extend({
+  isActive: z.boolean().optional(),
+});
 
 // ─── Expenses ────────────────────────────────────────────────────────────────
 

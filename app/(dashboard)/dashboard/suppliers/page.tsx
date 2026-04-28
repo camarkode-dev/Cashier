@@ -1,7 +1,7 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { suppliersApi } from '@/lib/api';
-import { Plus, Truck, Edit2, Phone, Mail } from 'lucide-react';
+import { Plus, Truck, Edit2, Phone, Mail, Search } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const emptyForm = { name: '', phone: '', email: '', address: '', notes: '' };
@@ -9,6 +9,7 @@ const emptyForm = { name: '', phone: '', email: '', address: '', notes: '' };
 export default function SuppliersPage() {
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [form, setForm] = useState(emptyForm);
@@ -21,7 +22,7 @@ export default function SuppliersPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const data: any = await suppliersApi.list({ limit: 100 });
+      const data: any = await suppliersApi.list({ limit: 200 });
       setSuppliers(Array.isArray(data) ? data : data?.data || []);
     } catch (error: any) {
       toast.error(error?.message || 'تعذر تحميل الموردين');
@@ -30,9 +31,18 @@ export default function SuppliersPage() {
     }
   };
 
-  useEffect(() => {
-    load();
-  }, []);
+  useEffect(() => { load(); }, []);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return suppliers;
+    return suppliers.filter((s) =>
+      s.name?.toLowerCase().includes(q) ||
+      s.phone?.includes(q) ||
+      s.email?.toLowerCase().includes(q) ||
+      s.address?.toLowerCase().includes(q)
+    );
+  }, [suppliers, search]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -69,44 +79,58 @@ export default function SuppliersPage() {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-        {loading ? Array.from({ length: 6 }).map((_, i) => <div key={i} className="card p-4 animate-pulse h-28" />) : suppliers.map((supplier: any) => (
-          <div key={supplier.id} className="card p-4 hover:shadow-md transition-shadow">
-            <div className="flex items-start justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-blue-100 dark:bg-blue-950 flex items-center justify-center text-blue-500">
-                  <Truck size={18} />
-                </div>
-                <div>
-                  <p className="font-bold text-gray-900 dark:text-white">{supplier.name}</p>
-                  {supplier.phone && <p className="text-xs text-gray-400 flex items-center gap-1"><Phone size={10} />{supplier.phone}</p>}
-                  {supplier.email && <p className="text-xs text-gray-400 flex items-center gap-1"><Mail size={10} />{supplier.email}</p>}
-                </div>
-              </div>
-              <button
-                onClick={() => {
-                  setEditing(supplier);
-                  setForm({
-                    name: supplier.name || '',
-                    phone: supplier.phone || '',
-                    email: supplier.email || '',
-                    address: supplier.address || '',
-                    notes: supplier.notes || '',
-                  });
-                  setShowForm(true);
-                }}
-                className="p-1.5 text-gray-400 hover:text-brand-500"
-              >
-                <Edit2 size={15} />
-              </button>
-            </div>
-          </div>
-        ))}
+      {/* Search */}
+      <div className="relative">
+        <Search size={16} className="absolute start-3 top-1/2 -translate-y-1/2 text-gray-400" />
+        <input
+          className="input ps-9 w-full"
+          placeholder="بحث بالاسم أو الهاتف أو البريد..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      </div>
 
-        {!loading && suppliers.length === 0 && (
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+        {loading
+          ? Array.from({ length: 6 }).map((_, i) => <div key={i} className="card p-4 animate-pulse h-28" />)
+          : filtered.map((supplier: any) => (
+            <div key={supplier.id} className="card p-4 hover:shadow-md transition-shadow">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-blue-100 dark:bg-blue-950 flex items-center justify-center text-blue-500">
+                    <Truck size={18} />
+                  </div>
+                  <div>
+                    <p className="font-bold text-gray-900 dark:text-white">{supplier.name}</p>
+                    {supplier.phone && <p className="text-xs text-gray-400 flex items-center gap-1"><Phone size={10} />{supplier.phone}</p>}
+                    {supplier.email && <p className="text-xs text-gray-400 flex items-center gap-1"><Mail size={10} />{supplier.email}</p>}
+                    {supplier.address && <p className="text-xs text-gray-400 mt-0.5">{supplier.address}</p>}
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setEditing(supplier);
+                    setForm({
+                      name: supplier.name || '',
+                      phone: supplier.phone || '',
+                      email: supplier.email || '',
+                      address: supplier.address || '',
+                      notes: supplier.notes || '',
+                    });
+                    setShowForm(true);
+                  }}
+                  className="p-1.5 text-gray-400 hover:text-brand-500 transition-colors"
+                >
+                  <Edit2 size={15} />
+                </button>
+              </div>
+            </div>
+          ))}
+
+        {!loading && filtered.length === 0 && (
           <div className="col-span-full text-center py-16 text-gray-400">
             <Truck size={48} className="mx-auto mb-3 opacity-30" />
-            <p>لا يوجد موردون</p>
+            <p>{search ? 'لا توجد نتائج' : 'لا يوجد موردون'}</p>
           </div>
         )}
       </div>
