@@ -3,14 +3,6 @@
   "buildCommand": "prisma generate && prisma migrate deploy && next build",
   "installCommand": "npm install",
   "outputDirectory": ".next",
-  "env": {
-    "DATABASE_URL": "@database_url",
-    "DIRECT_URL": "@direct_url",
-    "NEXT_PUBLIC_SUPABASE_URL": "@supabase_url",
-    "NEXT_PUBLIC_SUPABASE_ANON_KEY": "@supabase_anon_key",
-    "SUPABASE_SERVICE_ROLE_KEY": "@supabase_service_role_key",
-    "NEXT_PUBLIC_APP_URL": "@app_url"
-  },
   "headers": [
     {
       "source": "/sw.js",
