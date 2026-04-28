@@ -85,9 +85,9 @@ export function getPaymentMethodLabel(method: string, lang: 'ar' | 'en' = 'ar') 
     CASH: { ar: 'نقدي', en: 'Cash' },
     CARD: { ar: 'بطاقة', en: 'Card' },
     MOBILE: { ar: 'محفظة إلكترونية', en: 'Mobile Wallet' },
-    QR: { ar: 'رمز QR', en: 'QR Code' },
+    QR: { ar: 'محفظة إلكترونية', en: 'E-Wallet' },
     SPLIT: { ar: 'دفع مقسم', en: 'Split Payment' },
-    CREDIT: { ar: 'آجل', en: 'Credit' },
+    CREDIT: { ar: 'آجر', en: 'Credit' },
   };
   return labels[method]?.[lang] || method;
 }

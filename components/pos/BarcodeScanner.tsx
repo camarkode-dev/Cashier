@@ -36,6 +36,9 @@ export function BarcodeScanner({
   const stopCamera = useCallback(() => {
     try { controlsRef.current?.stop(); } catch {}
     controlsRef.current = null;
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
     setIsScanning(false);
   }, []);
 
@@ -52,11 +55,25 @@ export function BarcodeScanner({
 
   const startCamera = useCallback(async () => {
     setCameraError(null);
-    if (!videoRef.current) return;
+    const video = videoRef.current;
+    if (!video) return;
+
     try {
+      // Request camera stream directly so we control the video element
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+      });
+      if (!mountedRef.current) { stream.getTracks().forEach((t) => t.stop()); return; }
+
+      video.srcObject = stream;
+      await video.play().catch(() => {});
+      if (!mountedRef.current) { stream.getTracks().forEach((t) => t.stop()); return; }
+
+      setIsScanning(true);
+
       const { BrowserMultiFormatReader } = await import('@zxing/browser');
       const { DecodeHintType, BarcodeFormat } = await import('@zxing/library');
-      if (!mountedRef.current) return;
+      if (!mountedRef.current) { stream.getTracks().forEach((t) => t.stop()); return; }
 
       const hints = new Map<any, any>();
       hints.set(DecodeHintType.POSSIBLE_FORMATS, [
@@ -68,22 +85,23 @@ export function BarcodeScanner({
       hints.set(DecodeHintType.TRY_HARDER, true);
 
       const reader = new BrowserMultiFormatReader(hints, { delayBetweenScanAttempts: 80 });
-      if (!mountedRef.current) return;
-      setIsScanning(true);
+      if (!mountedRef.current) { stream.getTracks().forEach((t) => t.stop()); return; }
 
-      const controls = await reader.decodeFromConstraints(
-        { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } },
-        videoRef.current,
-        (result, _err, ctrl) => {
-          if (result && mountedRef.current) {
-            ctrl.stop();
-            controlsRef.current = null;
-            triggerScan(result.getText());
-          }
-        },
-      );
+      const controls = await reader.decodeFromStream(stream, video, (result, _err, ctrl) => {
+        if (result && mountedRef.current) {
+          ctrl.stop();
+          controlsRef.current = null;
+          triggerScan(result.getText());
+        }
+      });
+
       if (!mountedRef.current) { controls.stop(); return; }
-      controlsRef.current = controls;
+      controlsRef.current = {
+        stop: () => {
+          controls.stop();
+          stream.getTracks().forEach((t) => t.stop());
+        },
+      };
     } catch {
       if (mountedRef.current) {
         setCameraError('تعذر الوصول إلى الكاميرا — تأكد من منح الإذن.');
@@ -124,14 +142,25 @@ export function BarcodeScanner({
 
   useEffect(() => { if (autoStart) setCameraActive(true); }, [autoStart]);
 
-  // ─── Camera viewport shared between modal & inline ───────────────────────
-  const CameraView = ({ height = 300 }: { height?: number }) => (
+  const scanLineStyle = `
+    @keyframes barcodeScanLine {
+      0%   { top: 8px;  opacity: 0; }
+      10%  { opacity: 1; }
+      90%  { opacity: 1; }
+      100% { top: calc(100% - 8px); opacity: 0; }
+    }
+  `;
+
+  // ─── Camera viewport JSX (inlined to keep videoRef stable) ────────────────
+  const cameraViewport = (height: number) => (
     <div className="relative w-full overflow-hidden bg-black" style={{ height }}>
-      {/* Video element always rendered so ref is stable */}
+      {/* Video — always in DOM so ref never changes */}
       <video
         ref={videoRef}
-        className={cn('absolute inset-0 w-full h-full object-cover transition-opacity duration-300', cameraActive ? 'opacity-100' : 'opacity-0')}
-        playsInline muted autoPlay
+        className="absolute inset-0 w-full h-full object-cover"
+        playsInline
+        muted
+        autoPlay
       />
 
       {/* Placeholder when camera is off */}
@@ -164,31 +193,20 @@ export function BarcodeScanner({
           {/* 4-quadrant dim overlay */}
           <div className="absolute inset-x-0 top-0 bg-black/55 pointer-events-none" style={{ height: 'calc(50% - 52px)' }} />
           <div className="absolute inset-x-0 bottom-0 bg-black/55 pointer-events-none" style={{ height: 'calc(50% - 52px)' }} />
-          <div className="absolute top-0 bottom-0 left-0 bg-black/55 pointer-events-none"
-            style={{ top: 'calc(50% - 52px)', bottom: 'calc(50% - 52px)', width: 'calc(50% - 116px)' }} />
-          <div className="absolute top-0 bottom-0 right-0 bg-black/55 pointer-events-none"
-            style={{ top: 'calc(50% - 52px)', bottom: 'calc(50% - 52px)', width: 'calc(50% - 116px)' }} />
+          <div className="absolute bg-black/55 pointer-events-none"
+            style={{ top: 'calc(50% - 52px)', bottom: 'calc(50% - 52px)', left: 0, width: 'calc(50% - 116px)' }} />
+          <div className="absolute bg-black/55 pointer-events-none"
+            style={{ top: 'calc(50% - 52px)', bottom: 'calc(50% - 52px)', right: 0, width: 'calc(50% - 116px)' }} />
 
           {/* Scan frame */}
           <div
-            className={cn(
-              'absolute pointer-events-none transition-all duration-300',
-              scanSuccess ? 'opacity-0' : 'opacity-100',
-            )}
-            style={{
-              top: 'calc(50% - 52px)',
-              left: 'calc(50% - 116px)',
-              width: '232px',
-              height: '104px',
-            }}
+            className={cn('absolute pointer-events-none transition-all duration-300', scanSuccess ? 'opacity-0' : 'opacity-100')}
+            style={{ top: 'calc(50% - 52px)', left: 'calc(50% - 116px)', width: '232px', height: '104px' }}
           >
-            {/* Corner brackets */}
             <span className="absolute top-0 left-0 w-6 h-6 border-l-[3px] border-t-[3px] border-brand-400 rounded-tl-sm" />
             <span className="absolute top-0 right-0 w-6 h-6 border-r-[3px] border-t-[3px] border-brand-400 rounded-tr-sm" />
             <span className="absolute bottom-0 left-0 w-6 h-6 border-l-[3px] border-b-[3px] border-brand-400 rounded-bl-sm" />
             <span className="absolute bottom-0 right-0 w-6 h-6 border-r-[3px] border-b-[3px] border-brand-400 rounded-br-sm" />
-
-            {/* Animated scan line */}
             {isScanning && (
               <div
                 className="absolute inset-x-2 h-px bg-gradient-to-r from-transparent via-brand-400 to-transparent"
@@ -225,16 +243,9 @@ export function BarcodeScanner({
   if (variant === 'inline') {
     return (
       <>
-        <style>{`
-          @keyframes barcodeScanLine {
-            0%   { top: 8px;  opacity: 0; }
-            10%  { opacity: 1; }
-            90%  { opacity: 1; }
-            100% { top: calc(100% - 8px); opacity: 0; }
-          }
-        `}</style>
+        <style>{scanLineStyle}</style>
         <div className="w-full rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-950">
-          <CameraView height={220} />
+          {cameraViewport(220)}
           <div className="flex items-center justify-between px-3 py-2 bg-gray-900">
             <button
               onClick={() => setCameraActive(v => !v)}
@@ -259,28 +270,20 @@ export function BarcodeScanner({
   return (
     <>
       <style>{`
-        @keyframes barcodeScanLine {
-          0%   { top: 8px;  opacity: 0; }
-          10%  { opacity: 1; }
-          90%  { opacity: 1; }
-          100% { top: calc(100% - 8px); opacity: 0; }
-        }
+        ${scanLineStyle}
         @keyframes scannerIn {
           from { opacity: 0; transform: scale(0.95) translateY(8px); }
           to   { opacity: 1; transform: scale(1) translateY(0); }
         }
       `}</style>
 
-      {/* Overlay */}
       <div className="fixed inset-0 z-[80] bg-black/75 backdrop-blur-sm flex items-end md:items-center justify-center">
-
-        {/* Sheet/Modal */}
         <div
           className="w-full md:max-w-md flex flex-col bg-gray-950 md:rounded-3xl overflow-hidden shadow-2xl"
           style={{ animation: 'scannerIn 0.22s ease-out both', maxHeight: '92dvh' }}
           onClick={e => e.stopPropagation()}
         >
-          {/* ── Header ── */}
+          {/* Header */}
           <div className="flex items-center justify-between px-5 py-3.5 border-b border-white/10">
             <div className="flex items-center gap-2.5">
               <div className="w-7 h-7 rounded-xl bg-brand-500/20 flex items-center justify-center">
@@ -296,12 +299,11 @@ export function BarcodeScanner({
             </button>
           </div>
 
-          {/* ── Camera ── */}
-          <CameraView height={300} />
+          {/* Camera */}
+          {cameraViewport(300)}
 
-          {/* ── Controls ── */}
+          {/* Controls */}
           <div className="px-4 py-4 space-y-3 bg-gray-900">
-
             {/* Manual input */}
             <div className="flex gap-2">
               <div className="relative flex-1">

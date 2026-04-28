@@ -55,7 +55,7 @@ export const saleSchema = z.object({
   items: z.array(saleItemSchema).min(1),
   discountAmount: z.number().nonnegative().default(0),
   discountPercent: z.number().min(0).max(100).default(0),
-  paymentMethod: z.enum(['CASH', 'CARD', 'MOBILE', 'QR', 'SPLIT']).default('CASH'),
+  paymentMethod: z.enum(['CASH', 'CARD', 'MOBILE', 'QR', 'SPLIT', 'CREDIT']).default('CASH'),
   paidAmount: z.number().nonnegative(),
   notes: z.string().optional(),
   offlineId: z.string().optional(),

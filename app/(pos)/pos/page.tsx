@@ -274,11 +274,13 @@ export default function POSPage() {
     searchRef.current?.focus();
   };
 
-  const handleCheckout = async (paidAmount: number) => {
+  const handleCheckout = async (paidAmount: number, paymentNotes?: string) => {
     if (!user?.id) {
       toast.error('بيانات المستخدم غير مكتملة. أعد تسجيل الدخول ثم حاول مرة أخرى.');
       return;
     }
+
+    if (paymentNotes) posStore.setNotes(paymentNotes);
 
     try {
       const sale = await posStore.checkout(paidAmount, tenantId, branchId, user!.id);
