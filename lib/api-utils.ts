@@ -15,13 +15,18 @@ type AuthLookupResult = {
 const ROLE_LEVEL: Record<UserRole, number> = { OWNER: 3, ADMIN: 2, CASHIER: 1 };
 
 export function isDatabaseUnavailableError(error: unknown) {
-  if (!(error instanceof Error)) return false;
+  if (!error || typeof error !== 'object') return false;
+
+  const prismaError = error as { code?: string; name?: string; message?: string };
+  const message = prismaError.message || '';
 
   return (
-    error.name === 'PrismaClientInitializationError' ||
-    error.message.includes("Can't reach database server") ||
-    error.message.includes('Error querying the database') ||
-    error.message.includes('Connection refused')
+    prismaError.name === 'PrismaClientInitializationError' ||
+    prismaError.code === 'P2024' ||
+    message.includes("Can't reach database server") ||
+    message.includes('Error querying the database') ||
+    message.includes('Connection refused') ||
+    message.includes('Timed out fetching a new connection from the connection pool')
   );
 }
 

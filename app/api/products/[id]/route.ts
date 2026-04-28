@@ -29,12 +29,36 @@ export async function PUT(req: NextRequest, { params }: Params) {
 
   try {
     const body = productUpdateSchema.parse(await req.json());
-    const { initialStock: _, branchId: __, ...data } = body as any;
+    const { initialStock, branchId, minStock, ...data } = body as any;
 
-    const product = await prisma.product.update({
-      where: { id: params.id },
-      data,
-      include: { category: true },
+    const product = await prisma.$transaction(async (tx) => {
+      const updatedProduct = await tx.product.update({
+        where: { id: params.id },
+        data: {
+          ...data,
+          ...(minStock !== undefined ? { minStock } : {}),
+        },
+        include: { category: true },
+      });
+
+      const targetBranchId = branchId || dbUser.branchId;
+      if (targetBranchId && (initialStock !== undefined || minStock !== undefined)) {
+        await tx.inventory.upsert({
+          where: { productId_branchId: { productId: params.id, branchId: targetBranchId } },
+          create: {
+            productId: params.id,
+            branchId: targetBranchId,
+            quantity: initialStock ?? 0,
+            minStock: minStock ?? updatedProduct.minStock,
+          },
+          update: {
+            ...(initialStock !== undefined ? { quantity: initialStock } : {}),
+            ...(minStock !== undefined ? { minStock } : {}),
+          },
+        });
+      }
+
+      return updatedProduct;
     });
 
     await audit(dbUser.id, 'UPDATE', 'product', product.id, data);

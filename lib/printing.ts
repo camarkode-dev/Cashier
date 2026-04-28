@@ -36,6 +36,11 @@ export interface ReceiptItem {
   discountAmount?: number;
 }
 
+export interface PrinterPreferences {
+  printerType?: 'browser' | 'usb' | 'network' | 'bridge';
+  printerIp?: string;
+}
+
 // ESC/POS command bytes
 const ESC = 0x1b;
 const GS = 0x1d;
@@ -99,6 +104,21 @@ export class ThermalPrinter {
     } else {
       this.printViaBrowser(data);
     }
+  }
+
+  async printReceiptWithPreferences(data: ReceiptData, preferences?: PrinterPreferences): Promise<void> {
+    const printerType = preferences?.printerType || 'browser';
+
+    if (printerType === 'network' && preferences?.printerIp) {
+      const printed = await this.sendToNetworkPrinter(preferences.printerIp, 9100, data);
+      if (printed) return;
+    }
+
+    if (printerType === 'usb' && !this.device) {
+      await this.connectUSB();
+    }
+
+    await this.printReceipt(data);
   }
 
   private buildReceipt(data: ReceiptData): Uint8Array {

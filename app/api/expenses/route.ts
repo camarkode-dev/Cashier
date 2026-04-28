@@ -39,7 +39,11 @@ export async function POST(req: NextRequest) {
   try {
     const body = expenseSchema.parse(await req.json());
     const expense = await prisma.expense.create({
-      data: { ...body, date: body.date ? new Date(body.date) : new Date() },
+      data: {
+        ...body,
+        date: body.date ? new Date(body.date) : new Date(),
+        branchId: body.branchId || dbUser.branchId || undefined,
+      },
     });
     return created(expense);
   } catch (e) { return handleError(e); }

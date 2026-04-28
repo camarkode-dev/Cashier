@@ -1,5 +1,11 @@
 import { z } from 'zod';
 
+const optionalTrimmedString = z.preprocess((value) => {
+  if (typeof value !== 'string') return value;
+  const trimmed = value.trim();
+  return trimmed === '' ? undefined : trimmed;
+}, z.string().optional());
+
 // ─── Auth ────────────────────────────────────────────────────────────────────
 
 export const loginSchema = z.object({
@@ -11,19 +17,19 @@ export const loginSchema = z.object({
 
 export const productSchema = z.object({
   name: z.string().min(1),
-  nameAr: z.string().optional(),
-  sku: z.string().optional(),
-  barcode: z.string().optional(),
+  nameAr: optionalTrimmedString,
+  sku: optionalTrimmedString,
+  barcode: optionalTrimmedString,
   price: z.number().nonnegative(),
   costPrice: z.number().nonnegative().default(0),
   taxRate: z.number().min(0).max(100).default(0),
-  categoryId: z.string().optional(),
+  categoryId: optionalTrimmedString,
   image: z.string().url().optional().or(z.literal('')),
-  description: z.string().optional(),
+  description: optionalTrimmedString,
   isActive: z.boolean().default(true),
   minStock: z.number().int().nonnegative().default(5),
   initialStock: z.number().int().nonnegative().default(0),
-  branchId: z.string().optional(),
+  branchId: optionalTrimmedString,
 });
 
 export const productUpdateSchema = productSchema.partial();

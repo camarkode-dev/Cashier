@@ -73,7 +73,7 @@ export function truncate(str: string, maxLen: number) {
 export function getRoleLabel(role: string, lang: 'ar' | 'en' = 'ar') {
   const labels: Record<string, { ar: string; en: string }> = {
     OWNER: { ar: 'مالك', en: 'Owner' },
-    MANAGER: { ar: 'مدير', en: 'Manager' },
+    ADMIN: { ar: 'مدير', en: 'Manager' },
     CASHIER: { ar: 'كاشير', en: 'Cashier' },
     SUPER_ADMIN: { ar: 'مدير النظام', en: 'Super Admin' },
   };

@@ -25,10 +25,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   // Redirect if not authenticated after initialization
   useEffect(() => {
-    if (isInitialized && !user) {
-      router.replace(needsSetup ? '/register' : '/login');
-    }
-  }, [isInitialized, user, needsSetup]);
+    if (!isInitialized || user || authIssue === 'unavailable') return;
+    router.replace(needsSetup ? '/register' : '/login');
+  }, [authIssue, isInitialized, needsSetup, router, user]);
 
   useEffect(() => {
     if (!user) return;

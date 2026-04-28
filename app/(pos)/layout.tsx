@@ -6,17 +6,16 @@ import { useAuthStore } from '@/stores/auth.store';
 
 export default function POSLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const { isAuthenticated, isInitialized, needsSetup, initialize, authIssue } = useAuthStore();
+  const { user, isInitialized, needsSetup, initialize, authIssue } = useAuthStore();
 
   useEffect(() => {
     initialize();
   }, []);
 
   useEffect(() => {
-    if (isInitialized && !isAuthenticated) {
-      router.replace(needsSetup ? '/register' : '/login');
-    }
-  }, [isInitialized, isAuthenticated, needsSetup]);
+    if (!isInitialized || user || authIssue === 'unavailable') return;
+    router.replace(needsSetup ? '/register' : '/login');
+  }, [authIssue, isInitialized, needsSetup, router, user]);
 
   if (!isInitialized) {
     return (
@@ -26,10 +25,10 @@ export default function POSLayout({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!isAuthenticated && authIssue === 'unavailable') {
+  if (!user && authIssue === 'unavailable') {
     return <AuthUnavailableState onRetry={() => initialize(true)} />;
   }
 
-  if (!isAuthenticated) return null;
+  if (!user) return null;
   return <div className="h-screen overflow-hidden bg-gray-100 dark:bg-gray-950">{children}</div>;
 }

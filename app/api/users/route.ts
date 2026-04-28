@@ -1,7 +1,7 @@
 export const dynamic = 'force-dynamic';
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { getAuthUser, ok, created, unauthorized, forbidden, handleError, audit } from '@/lib/api-utils';
 import { createUserSchema } from '@/lib/validations';
 
@@ -32,12 +32,14 @@ export async function POST(req: NextRequest) {
     const body = createUserSchema.parse(await req.json());
 
     // Create Supabase auth user
-    const supabase = await createClient();
-    const { data: authData, error: authErr } = await supabase.auth.admin?.createUser({
+    const adminClient = createAdminClient();
+    if (!adminClient) return handleError(new Error('Admin client not configured'));
+
+    const { data: authData, error: authErr } = await adminClient.auth.admin.createUser({
       email: body.email,
       password: body.password,
       email_confirm: true,
-    }) ?? {};
+    });
 
     if (authErr || !authData?.user) {
       return handleError(authErr || new Error('Failed to create auth user'));

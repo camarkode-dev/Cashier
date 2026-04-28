@@ -1,5 +1,6 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { jsPDF } from 'jspdf';
 import { reportsApi } from '@/lib/api';
 import { useSettingsStore } from '@/stores/settings.store';
 import { useAuthStore } from '@/stores/auth.store';
@@ -8,7 +9,7 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend,
 } from 'recharts';
-import { TrendingUp, DollarSign, ShoppingCart, Percent, Package, RefreshCw } from 'lucide-react';
+import { TrendingUp, DollarSign, ShoppingCart, Percent, Package, RefreshCw, FileDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import dayjs from 'dayjs';
 
@@ -47,11 +48,57 @@ export default function ReportsPage() {
       ]);
       setProfit(profitRes);
       setTopProducts(Array.isArray(topRes) ? topRes : []);
-    } catch {}
-    setLoading(false);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  useEffect(() => { load(); }, [period, customFrom, customTo, groupBy, sortBy, activeBranchId]);
+  useEffect(() => {
+    load();
+  }, [period, customFrom, customTo, groupBy, sortBy, activeBranchId]);
+
+  const exportPdf = () => {
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const { from, to } = getDateRange();
+    let y = 15;
+
+    doc.setFontSize(16);
+    doc.text('Cashier Reports', 14, y);
+    y += 8;
+    doc.setFontSize(10);
+    doc.text(`Range: ${from} -> ${to}`, 14, y);
+    y += 8;
+
+    const summary = profit?.summary || {};
+    [
+      `Revenue: ${summary.revenue ?? 0}`,
+      `Profit: ${summary.profit ?? 0}`,
+      `Sales Count: ${summary.salesCount ?? 0}`,
+      `Profit Margin: ${summary.profitMargin ?? 0}%`,
+      `Discount: ${summary.discount ?? 0}`,
+      `Tax: ${summary.tax ?? 0}`,
+    ].forEach((line) => {
+      doc.text(line, 14, y);
+      y += 7;
+    });
+
+    y += 4;
+    doc.setFontSize(12);
+    doc.text('Top Products', 14, y);
+    y += 8;
+    doc.setFontSize(10);
+    topProducts.forEach((product: any, index) => {
+      const value = sortBy === 'quantity' ? product.quantity : sortBy === 'profit' ? product.profit : product.revenue;
+      doc.text(`${index + 1}. ${product.nameAr || product.name} - ${value}`, 14, y);
+      y += 6;
+      if (y > 280) {
+        doc.addPage();
+        y = 15;
+      }
+    });
+
+    doc.save(`reports-${from}-${to}.pdf`);
+  };
 
   if (user?.role === 'CASHIER') {
     return (
@@ -64,19 +111,19 @@ export default function ReportsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header + controls */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <h2 className="text-xl font-black text-gray-900 dark:text-white">تقارير الأرباح</h2>
         <div className="flex flex-wrap items-center gap-2">
-          {(['7d', '30d', '90d', 'custom'] as Period[]).map((p) => (
-            <button key={p} onClick={() => setPeriod(p)}
-              className={cn('px-3 py-1.5 rounded-xl text-sm font-semibold transition-colors',
-                period === p ? 'bg-brand-500 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400')}>
-              {p === '7d' ? '7 أيام' : p === '30d' ? '30 يوم' : p === '90d' ? '3 أشهر' : 'مخصص'}
+          {(['7d', '30d', '90d', 'custom'] as Period[]).map((value) => (
+            <button key={value} onClick={() => setPeriod(value)} className={cn('px-3 py-1.5 rounded-xl text-sm font-semibold transition-colors', period === value ? 'bg-brand-500 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400')}>
+              {value === '7d' ? '7 أيام' : value === '30d' ? '30 يوم' : value === '90d' ? '3 أشهر' : 'مخصص'}
             </button>
           ))}
           <button onClick={load} className="p-2 rounded-xl border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">
             <RefreshCw size={15} className={cn('text-gray-500', loading && 'animate-spin')} />
+          </button>
+          <button onClick={exportPdf} className="btn-brand flex items-center gap-2 px-4 py-2">
+            <FileDown size={16} /> PDF
           </button>
         </div>
       </div>
@@ -99,52 +146,40 @@ export default function ReportsPage() {
         </div>
       )}
 
-      {/* Summary cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           { label: 'الإيرادات', value: profit?.summary?.revenue || 0, icon: DollarSign, color: 'text-brand-500', bg: 'bg-brand-50 dark:bg-brand-950' },
           { label: 'صافي الربح', value: profit?.summary?.profit || 0, icon: TrendingUp, color: 'text-green-500', bg: 'bg-green-50 dark:bg-green-950' },
           { label: 'عدد الفواتير', value: profit?.summary?.salesCount || 0, icon: ShoppingCart, color: 'text-blue-500', bg: 'bg-blue-50 dark:bg-blue-950', raw: true },
           { label: 'هامش الربح', value: profit?.summary?.profitMargin || 0, icon: Percent, color: 'text-purple-500', bg: 'bg-purple-50 dark:bg-purple-950', isPercent: true },
-        ].map((s) => {
-          const Icon = s.icon;
+        ].map((stat) => {
+          const Icon = stat.icon;
           return (
-            <div key={s.label} className="card p-4">
+            <div key={stat.label} className="card p-4">
               <div className="flex items-center gap-3 mb-3">
-                <div className={cn('w-10 h-10 rounded-2xl flex items-center justify-center', s.bg)}>
-                  <Icon size={18} className={s.color} />
+                <div className={cn('w-10 h-10 rounded-2xl flex items-center justify-center', stat.bg)}>
+                  <Icon size={18} className={stat.color} />
                 </div>
-                <span className="text-sm text-gray-500">{s.label}</span>
+                <span className="text-sm text-gray-500">{stat.label}</span>
               </div>
-              {loading ? (
-                <div className="h-7 bg-gray-100 dark:bg-gray-800 rounded animate-pulse w-24" />
-              ) : (
-                <p className={cn('text-2xl font-black', s.color)}>
-                  {(s as any).isPercent ? `${s.value.toFixed(1)}%` : (s as any).raw ? s.value.toLocaleString('ar-EG') : formatCurrency(s.value, cur)}
-                </p>
-              )}
+              {loading ? <div className="h-7 bg-gray-100 dark:bg-gray-800 rounded animate-pulse w-24" /> : <p className={cn('text-2xl font-black', stat.color)}>{(stat as any).isPercent ? `${stat.value.toFixed(1)}%` : (stat as any).raw ? stat.value.toLocaleString('ar-EG') : formatCurrency(stat.value, cur)}</p>}
             </div>
           );
         })}
       </div>
 
-      {/* Revenue & Profit chart */}
       <div className="card p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-bold text-gray-900 dark:text-white">الإيرادات والأرباح</h3>
           <div className="flex gap-1.5">
-            {(['day', 'week', 'month'] as const).map((g) => (
-              <button key={g} onClick={() => setGroupBy(g)}
-                className={cn('px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors',
-                  groupBy === g ? 'bg-brand-500 text-white' : 'text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800')}>
-                {g === 'day' ? 'يومي' : g === 'week' ? 'أسبوعي' : 'شهري'}
+            {(['day', 'week', 'month'] as const).map((value) => (
+              <button key={value} onClick={() => setGroupBy(value)} className={cn('px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors', groupBy === value ? 'bg-brand-500 text-white' : 'text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800')}>
+                {value === 'day' ? 'يومي' : value === 'week' ? 'أسبوعي' : 'شهري'}
               </button>
             ))}
           </div>
         </div>
-        {loading ? (
-          <div className="h-64 bg-gray-50 dark:bg-gray-800 rounded-xl animate-pulse" />
-        ) : (
+        {loading ? <div className="h-64 bg-gray-50 dark:bg-gray-800 rounded-xl animate-pulse" /> : (
           <ResponsiveContainer width="100%" height={280}>
             <AreaChart data={profit?.chart || []}>
               <defs>
@@ -169,7 +204,6 @@ export default function ReportsPage() {
         )}
       </div>
 
-      {/* Top products */}
       <div className="card p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
@@ -188,22 +222,20 @@ export default function ReportsPage() {
           <div className="text-center py-10 text-gray-400"><Package size={36} className="mx-auto mb-3 opacity-40" /><p>لا توجد بيانات</p></div>
         ) : (
           <div className="space-y-3">
-            {topProducts.map((p, idx) => {
-              const value = sortBy === 'quantity' ? p.quantity : sortBy === 'profit' ? p.profit : p.revenue;
-              const maxVal = sortBy === 'quantity' ? topProducts[0]?.quantity : sortBy === 'profit' ? topProducts[0]?.profit : topProducts[0]?.revenue;
-              const pct = maxVal > 0 ? (value / maxVal) * 100 : 0;
+            {topProducts.map((product, index) => {
+              const value = sortBy === 'quantity' ? product.quantity : sortBy === 'profit' ? product.profit : product.revenue;
+              const maxValue = sortBy === 'quantity' ? topProducts[0]?.quantity : sortBy === 'profit' ? topProducts[0]?.profit : topProducts[0]?.revenue;
+              const percent = maxValue > 0 ? (value / maxValue) * 100 : 0;
               return (
-                <div key={p.productId} className="flex items-center gap-3">
-                  <span className="w-6 h-6 rounded-full bg-brand-100 dark:bg-brand-950 text-brand-500 text-xs font-black flex items-center justify-center flex-shrink-0">{idx + 1}</span>
+                <div key={product.productId} className="flex items-center gap-3">
+                  <span className="w-6 h-6 rounded-full bg-brand-100 dark:bg-brand-950 text-brand-500 text-xs font-black flex items-center justify-center flex-shrink-0">{index + 1}</span>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-1">
-                      <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{p.nameAr || p.name}</p>
-                      <p className="text-sm font-bold text-brand-500 flex-shrink-0 ms-2">
-                        {sortBy === 'quantity' ? `${p.quantity} وحدة` : formatCurrency(value, cur)}
-                      </p>
+                      <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{product.nameAr || product.name}</p>
+                      <p className="text-sm font-bold text-brand-500 flex-shrink-0 ms-2">{sortBy === 'quantity' ? `${product.quantity} وحدة` : formatCurrency(value, cur)}</p>
                     </div>
                     <div className="w-full bg-gray-100 dark:bg-gray-800 rounded-full h-1.5">
-                      <div className="bg-brand-500 h-1.5 rounded-full" style={{ width: `${pct}%` }} />
+                      <div className="bg-brand-500 h-1.5 rounded-full" style={{ width: `${percent}%` }} />
                     </div>
                   </div>
                 </div>
@@ -211,22 +243,6 @@ export default function ReportsPage() {
             })}
           </div>
         )}
-      </div>
-
-      {/* Extra stats row */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {[
-          { label: 'إجمالي الخصومات', value: profit?.summary?.discount || 0, color: 'text-red-500' },
-          { label: 'إجمالي الضرائب', value: profit?.summary?.tax || 0, color: 'text-amber-500' },
-          { label: 'متوسط قيمة الفاتورة', value: profit?.summary?.salesCount > 0 ? (profit.summary.revenue / profit.summary.salesCount) : 0, color: 'text-blue-500' },
-        ].map((s) => (
-          <div key={s.label} className="card p-4 text-center">
-            <p className="text-sm text-gray-400 mb-1">{s.label}</p>
-            {loading ? <div className="h-7 bg-gray-100 dark:bg-gray-800 rounded animate-pulse w-24 mx-auto" /> : (
-              <p className={cn('text-xl font-black', s.color)}>{formatCurrency(s.value, cur)}</p>
-            )}
-          </div>
-        ))}
       </div>
     </div>
   );

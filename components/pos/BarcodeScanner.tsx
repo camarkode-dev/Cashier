@@ -1,24 +1,31 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Camera, Keyboard, ScanLine, ShieldAlert, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface BarcodeScannerProps {
   onScan: (barcode: string) => void;
   onClose: () => void;
+  autoStart?: boolean;
+  variant?: 'modal' | 'inline';
 }
 
-export function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps) {
+export function BarcodeScanner({
+  onScan,
+  onClose,
+  autoStart = false,
+  variant = 'modal',
+}: BarcodeScannerProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const scannerRef = useRef<any>(null);
+  const autoStartedRef = useRef(false);
+  const scannerId = useId().replace(/:/g, '');
   const [manualCode, setManualCode] = useState('');
   const [cameraMode, setCameraMode] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [cameraPermission, setCameraPermission] = useState<'unknown' | 'prompt' | 'granted' | 'denied'>('unknown');
   const [isScanning, setIsScanning] = useState(false);
-  const scannerId = 'html5qr-scanner';
-
   const stopCamera = useCallback(async () => {
     try {
       if (scannerRef.current?.isScanning) {
@@ -34,11 +41,28 @@ export function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps) {
     setCameraError(null);
 
     try {
-      const { Html5Qrcode } = await import('html5-qrcode');
+      const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import('html5-qrcode');
       scannerRef.current = new Html5Qrcode(scannerId);
       await scannerRef.current.start(
         { facingMode: 'environment' },
-        { fps: 10, qrbox: { width: 250, height: 150 } },
+        {
+          fps: 12,
+          aspectRatio: 1.77,
+          qrbox: { width: 280, height: 140 },
+          formatsToSupport: [
+            Html5QrcodeSupportedFormats.CODE_128,
+            Html5QrcodeSupportedFormats.CODE_39,
+            Html5QrcodeSupportedFormats.CODE_93,
+            Html5QrcodeSupportedFormats.CODABAR,
+            Html5QrcodeSupportedFormats.DATA_MATRIX,
+            Html5QrcodeSupportedFormats.EAN_13,
+            Html5QrcodeSupportedFormats.EAN_8,
+            Html5QrcodeSupportedFormats.ITF,
+            Html5QrcodeSupportedFormats.QR_CODE,
+            Html5QrcodeSupportedFormats.UPC_A,
+            Html5QrcodeSupportedFormats.UPC_E,
+          ],
+        },
         (decodedText: string) => {
           stopCamera();
           onScan(decodedText);
@@ -157,8 +181,25 @@ export function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps) {
     return () => window.removeEventListener('keydown', handler);
   }, [onClose]);
 
+  useEffect(() => {
+    if (!autoStart || autoStartedRef.current) return;
+    autoStartedRef.current = true;
+
+    if (cameraPermission === 'granted') {
+      setCameraMode(true);
+      return;
+    }
+
+    void requestCameraPermission();
+  }, [autoStart, cameraPermission, requestCameraPermission]);
+
+  const containerClassName =
+    variant === 'modal'
+      ? 'fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm'
+      : 'rounded-3xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-950/40';
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+    <div className={containerClassName}>
       <div className="w-full max-w-sm rounded-3xl border border-gray-100 bg-white shadow-2xl animate-scale-in dark:border-gray-800 dark:bg-gray-900">
         <div className="flex items-center justify-between border-b border-gray-100 p-5 dark:border-gray-800">
           <div className="flex items-center gap-2">

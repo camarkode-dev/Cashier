@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { expensesApi } from '@/lib/api';
 import { resolveAppCurrency } from '@/lib/currency';
 import { formatCurrency, formatDate } from '@/lib/utils';
@@ -9,6 +9,7 @@ import { useAuthStore } from '@/stores/auth.store';
 import { useSettingsStore } from '@/stores/settings.store';
 
 const CATEGORIES = ['إيجار', 'كهرباء', 'مياه', 'رواتب', 'نقل', 'صيانة', 'تسويق', 'أخرى'];
+const emptyForm = { title: '', amount: '', category: 'أخرى', notes: '', paymentMethod: 'CASH' };
 
 export default function ExpensesPage() {
   const { tenant } = useAuthStore();
@@ -17,53 +18,77 @@ export default function ExpensesPage() {
   const [summary, setSummary] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ title: '', amount: '', category: 'أخرى', notes: '', paymentMethod: 'CASH' });
+  const [form, setForm] = useState(emptyForm);
   const cur = resolveAppCurrency(tenant?.currency, settingsCountry, settingsCurrency);
 
   const load = async () => {
     setLoading(true);
     try {
-      const [exp, sum] = await Promise.all([expensesApi.list({ limit: 50 }) as any, expensesApi.summary() as any]);
-      setExpenses(exp?.data?.data || exp?.data || []);
-      setSummary(sum?.data || sum);
-    } catch {}
-    setLoading(false);
+      const [expenseList, summaryData] = await Promise.all([
+        expensesApi.list({ limit: 50 }) as any,
+        expensesApi.summary() as any,
+      ]);
+      setExpenses(Array.isArray(expenseList?.data) ? expenseList.data : Array.isArray(expenseList) ? expenseList : expenseList?.data || []);
+      setSummary(summaryData?.data || summaryData);
+    } catch (error: any) {
+      toast.error(error?.message || 'تعذر تحميل المصروفات');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await expensesApi.create({ ...form, amount: parseFloat(form.amount) });
-      toast.success('تم إضافة المصروف');
-      setShowForm(false); setForm({ title: '', amount: '', category: 'أخرى', notes: '', paymentMethod: 'CASH' }); load();
-    } catch {}
+      await expensesApi.create({
+        title: form.title.trim(),
+        amount: parseFloat(form.amount),
+        category: form.category,
+        notes: form.notes.trim() || undefined,
+        paymentMethod: form.paymentMethod,
+      });
+      toast.success('تم الحفظ');
+      setShowForm(false);
+      setForm(emptyForm);
+      await load();
+    } catch (error: any) {
+      toast.error(error?.message || 'تعذر حفظ المصروف');
+    }
   };
 
   const handleDelete = async (id: string) => {
     if (!confirm('حذف هذا المصروف؟')) return;
-    try { await expensesApi.delete(id); toast.success('تم الحذف'); load(); } catch {}
+    try {
+      await expensesApi.delete(id);
+      toast.success('تم الحذف');
+      await load();
+    } catch (error: any) {
+      toast.error(error?.message || 'تعذر حذف المصروف');
+    }
   };
 
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-black text-gray-900 dark:text-white">المصروفات</h2>
-        <button onClick={() => setShowForm(true)} className="btn-brand flex items-center gap-2"><Plus size={18} /> إضافة مصروف</button>
+        <button onClick={() => { setForm(emptyForm); setShowForm(true); }} className="btn-brand flex items-center gap-2"><Plus size={18} /> إضافة مصروف</button>
       </div>
 
       {summary && (
         <div className="card p-5">
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-bold text-gray-900 dark:text-white text-sm">ملخص المصروفات</h3>
-            <p className="text-xl font-black text-red-500">{formatCurrency(summary.totalAmount, cur)}</p>
+            <p className="text-xl font-black text-red-500">{formatCurrency(summary.totalAmount || 0, cur)}</p>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-            {(summary.byCategory || []).map((c: any) => (
-              <div key={c.category} className="bg-gray-50 dark:bg-gray-800 rounded-xl px-3 py-2 text-sm">
-                <p className="text-gray-400 text-xs">{c.category}</p>
-                <p className="font-bold text-gray-900 dark:text-white">{formatCurrency(c._sum.amount, cur)}</p>
+            {(summary.byCategory || []).map((category: any) => (
+              <div key={category.category} className="bg-gray-50 dark:bg-gray-800 rounded-xl px-3 py-2 text-sm">
+                <p className="text-gray-400 text-xs">{category.category}</p>
+                <p className="font-bold text-gray-900 dark:text-white">{formatCurrency(category._sum?.amount || 0, cur)}</p>
               </div>
             ))}
           </div>
@@ -85,13 +110,13 @@ export default function ExpensesPage() {
             <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
               {loading ? Array.from({ length: 5 }).map((_, i) => (
                 <tr key={i}>{Array.from({ length: 4 }).map((_, j) => <td key={j} className="px-4 py-3"><div className="h-4 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" /></td>)}</tr>
-              )) : expenses.map((e: any) => (
-                <tr key={e.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                  <td className="px-4 py-3 font-semibold text-gray-900 dark:text-white">{e.titleAr || e.title}</td>
-                  <td className="px-4 py-3"><span className="px-2.5 py-1 rounded-full bg-gray-100 dark:bg-gray-800 text-xs font-medium text-gray-600 dark:text-gray-400">{e.category}</span></td>
-                  <td className="px-4 py-3 font-bold text-red-500">{formatCurrency(e.amount, cur)}</td>
-                  <td className="px-4 py-3 hidden md:table-cell text-xs text-gray-400">{formatDate(e.date)}</td>
-                  <td className="px-4 py-3"><button onClick={() => handleDelete(e.id)} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950 text-gray-400 hover:text-red-500 transition-colors"><Trash2 size={15} /></button></td>
+              )) : expenses.map((expense: any) => (
+                <tr key={expense.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                  <td className="px-4 py-3 font-semibold text-gray-900 dark:text-white">{expense.titleAr || expense.title}</td>
+                  <td className="px-4 py-3"><span className="px-2.5 py-1 rounded-full bg-gray-100 dark:bg-gray-800 text-xs font-medium text-gray-600 dark:text-gray-400">{expense.category}</span></td>
+                  <td className="px-4 py-3 font-bold text-red-500">{formatCurrency(expense.amount, cur)}</td>
+                  <td className="px-4 py-3 hidden md:table-cell text-xs text-gray-400">{formatDate(expense.date)}</td>
+                  <td className="px-4 py-3"><button onClick={() => handleDelete(expense.id)} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950 text-gray-400 hover:text-red-500 transition-colors"><Trash2 size={15} /></button></td>
                 </tr>
               ))}
             </tbody>
@@ -108,10 +133,10 @@ export default function ExpensesPage() {
             </div>
             <form onSubmit={handleSubmit} className="p-5 space-y-3">
               <div><label className="label">البيان *</label><input className="input" value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} required /></div>
-              <div><label className="label">المبلغ *</label><input className="input" type="number" step="0.01" value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))} required dir="ltr" /></div>
+              <div><label className="label">المبلغ *</label><input className="input" type="number" min="0" step="0.01" value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))} required dir="ltr" /></div>
               <div><label className="label">الفئة</label>
                 <select className="input" value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}>
-                  {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                  {CATEGORIES.map((category) => <option key={category} value={category}>{category}</option>)}
                 </select>
               </div>
               <div><label className="label">طريقة الدفع</label>
@@ -124,7 +149,7 @@ export default function ExpensesPage() {
               <div><label className="label">ملاحظات</label><input className="input" value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} /></div>
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setShowForm(false)} className="flex-1 py-3 rounded-xl border border-gray-200 dark:border-gray-700 font-semibold">إلغاء</button>
-                <button type="submit" className="flex-1 btn-brand py-3">إضافة</button>
+                <button type="submit" className="flex-1 btn-brand py-3">حفظ</button>
               </div>
             </form>
           </div>

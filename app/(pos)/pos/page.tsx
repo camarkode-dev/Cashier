@@ -621,7 +621,7 @@ export default function POSPage() {
         tenantId={tenantId}
       />
 
-      {scanning && <BarcodeScanner onScan={handleBarcodeScanned} onClose={() => setScanning(false)} />}
+      {scanning && <BarcodeScanner autoStart onScan={handleBarcodeScanned} onClose={() => setScanning(false)} />}
 
       {showPayment && (
         <PaymentModal
