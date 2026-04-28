@@ -1,16 +1,31 @@
 import { NextResponse } from 'next/server';
-import { createClient } from './supabase/server';
-import { prisma } from './prisma';
 import { ZodError } from 'zod';
 import { logger } from './logger';
+import { prisma } from './prisma';
+import { createClient } from './supabase/server';
 
 export type UserRole = 'OWNER' | 'ADMIN' | 'CASHIER';
 
+type AuthLookupResult = {
+  user: any | null;
+  dbUser: any | null;
+  error?: 'DB_UNAVAILABLE';
+};
+
 const ROLE_LEVEL: Record<UserRole, number> = { OWNER: 3, ADMIN: 2, CASHIER: 1 };
 
-// ─── Auth helper ────────────────────────────────────────────────────────────
+export function isDatabaseUnavailableError(error: unknown) {
+  if (!(error instanceof Error)) return false;
 
-export async function getAuthUser(minRole?: UserRole) {
+  return (
+    error.name === 'PrismaClientInitializationError' ||
+    error.message.includes("Can't reach database server") ||
+    error.message.includes('Error querying the database') ||
+    error.message.includes('Connection refused')
+  );
+}
+
+export async function getAuthUser(minRole?: UserRole): Promise<AuthLookupResult> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -19,43 +34,50 @@ export async function getAuthUser(minRole?: UserRole) {
 
   if (error || !user) return { user: null, dbUser: null };
 
-  const dbUser = await prisma.user.findUnique({
-    where: { id: user.id },
-    include: {
-      branch: true,
-      tenant: {
-        select: {
-          id: true,
-          name: true,
-          nameAr: true,
-          slug: true,
-          currency: true,
-          taxRate: true,
-          logo: true,
-          license: {
-            select: {
-              type: true,
-              status: true,
-              expiresAt: true,
-              maxDevices: true,
-              maxUsers: true,
+  try {
+    const dbUser = await prisma.user.findUnique({
+      where: { id: user.id },
+      include: {
+        branch: true,
+        tenant: {
+          select: {
+            id: true,
+            name: true,
+            nameAr: true,
+            slug: true,
+            currency: true,
+            taxRate: true,
+            logo: true,
+            license: {
+              select: {
+                type: true,
+                status: true,
+                expiresAt: true,
+                maxDevices: true,
+                maxUsers: true,
+              },
             },
           },
         },
       },
-    },
-  });
+    });
 
-  if (!dbUser || !dbUser.isActive) return { user: null, dbUser: null };
+    if (!dbUser || !dbUser.isActive) return { user: null, dbUser: null };
 
-  if (minRole && ROLE_LEVEL[dbUser.role as UserRole] < ROLE_LEVEL[minRole]) {
-    return { user: null, dbUser: null };
+    if (minRole && ROLE_LEVEL[dbUser.role as UserRole] < ROLE_LEVEL[minRole]) {
+      return { user: null, dbUser: null };
+    }
+
+    return { user, dbUser };
+  } catch (error) {
+    if (isDatabaseUnavailableError(error)) {
+      logger.warn('[getAuthUser] database unavailable');
+      return { user, dbUser: null, error: 'DB_UNAVAILABLE' };
+    }
+
+    throw error;
   }
-
-  return { user, dbUser };
 }
-
-// ─── Audit log helper ────────────────────────────────────────────────────────
 
 export async function audit(
   userId: string,
@@ -68,8 +90,6 @@ export async function audit(
     data: { userId, action, entity, entityId, metadata: metadata ?? undefined },
   });
 }
-
-// ─── Response helpers ────────────────────────────────────────────────────────
 
 export function ok<T>(data: T, status = 200) {
   return NextResponse.json({ success: true, data }, { status });
@@ -99,42 +119,46 @@ export function notFound(entity = 'Resource') {
   return err(`${entity} not found`, 404);
 }
 
-export function serverError(e?: unknown) {
-  const msg = e instanceof Error ? e.message : 'Internal server error';
-  logger.error('[serverError]', e);
-  return err(msg, 500);
+export function serviceUnavailable(message = 'Service unavailable') {
+  return err(message, 503);
 }
 
-// ─── Zod error handler ───────────────────────────────────────────────────────
+export function serverError(error?: unknown) {
+  const message = error instanceof Error ? error.message : 'Internal server error';
+  logger.error('[serverError]', error);
+  return err(message, 500);
+}
 
-export function handleError(e: unknown, context?: string) {
-  if (e instanceof ZodError) {
-    return err('Validation error', 422, e.flatten().fieldErrors);
+export function handleError(error: unknown, context?: string) {
+  if (error instanceof ZodError) {
+    return err('Validation error', 422, error.flatten().fieldErrors);
   }
-  if (e instanceof Error) {
-    if (e.message.includes('Unique constraint') || e.message.includes('unique constraint')) {
+
+  if (isDatabaseUnavailableError(error)) {
+    logger.error(`[handleError][db-unavailable]${context ? ` ${context}` : ''}`, error);
+    return serviceUnavailable('Database connection is unavailable');
+  }
+
+  if (error instanceof Error) {
+    if (error.message.includes('Unique constraint') || error.message.includes('unique constraint')) {
       return err('Record already exists', 409);
     }
-    if (e.message.includes('Record to update not found')) {
+    if (error.message.includes('Record to update not found')) {
       return err('Not found', 404);
     }
-    // Business logic errors (stock, branch, etc.) → 400
-    if (e.message.match(/[أ-ي]/) || e.message.toLowerCase().includes('insufficient')) {
-      return err(e.message, 400);
+    if (error.message.match(/[أ-ي]/) || error.message.toLowerCase().includes('insufficient')) {
+      return err(error.message, 400);
     }
   }
-  logger.error(`[handleError]${context ? ` ${context}` : ''}`, e);
-  return serverError(e);
-}
 
-// ─── Role check ──────────────────────────────────────────────────────────────
+  logger.error(`[handleError]${context ? ` ${context}` : ''}`, error);
+  return serverError(error);
+}
 
 export function requireRole(dbUser: { role: string } | null, minRole: UserRole): boolean {
   if (!dbUser) return false;
   return ROLE_LEVEL[dbUser.role as UserRole] >= ROLE_LEVEL[minRole];
 }
-
-// ─── Invoice number generator ────────────────────────────────────────────────
 
 export async function generateInvoiceNumber(branchId?: string) {
   const date = new Date();
@@ -144,5 +168,6 @@ export async function generateInvoiceNumber(branchId?: string) {
       createdAt: { gte: new Date(date.setHours(0, 0, 0, 0)) },
     },
   });
+
   return `INV-${dateKey}-${String(count + 1).padStart(4, '0')}`;
 }

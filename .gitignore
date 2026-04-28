@@ -12,3 +12,8 @@ uploads/
 .turbo/
 *.tsbuildinfo
 prisma/migrations/
+
+.vercel
+.env*.local
+
+/generated/prisma

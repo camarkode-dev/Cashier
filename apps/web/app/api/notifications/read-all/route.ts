@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 import { getAuthUser, ok, unauthorized } from '@/lib/api-utils';
 import { prisma } from '@/lib/prisma';
 

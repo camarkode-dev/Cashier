@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 import { NextRequest } from 'next/server';
 import { ok, getAuthUser, unauthorized, handleError } from '@/lib/api-utils';
 import { offlineSyncSchema } from '@/lib/validations';

@@ -1,14 +1,18 @@
-const CACHE_NAME = 'kasher-v1';
-const OFFLINE_URL = '/offline';
+const CACHE_NAME = 'Cashier-v2';
 
 const STATIC_ASSETS = [
   '/',
   '/pos',
   '/dashboard',
   '/login',
-  '/manifest.json',
-  '/icons/icon-192x192.png',
-  '/icons/icon-512x512.png',
+  '/manifest.webmanifest',
+  '/favicon.ico',
+  '/icon.png',
+  '/icon-192.png',
+  '/icon-512.png',
+  '/maskable-icon.png',
+  '/apple-icon.png',
+  '/badge-72.png',
 ];
 
 const API_CACHE_URLS = [
@@ -17,71 +21,64 @@ const API_CACHE_URLS = [
   '/api/branches',
 ];
 
-// ─── Install ─────────────────────────────────────────────────────────────────
-
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(STATIC_ASSETS).catch(() => {});
-    }),
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS).catch(() => {})),
   );
   self.skipWaiting();
 });
 
-// ─── Activate ────────────────────────────────────────────────────────────────
-
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))),
+      Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))),
     ),
   );
   self.clients.claim();
 });
 
-// ─── Fetch ───────────────────────────────────────────────────────────────────
-
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Skip cross-origin requests
   if (url.origin !== location.origin) return;
 
-  // Never intercept auth or Supabase traffic — session cookies must flow untouched
   if (
     url.pathname.startsWith('/api/auth/') ||
     url.pathname.startsWith('/auth/') ||
     url.hostname.includes('supabase')
-  ) return;
+  ) {
+    return;
+  }
 
-  // API routes: network-first with cache fallback for GET
   if (url.pathname.startsWith('/api/')) {
     if (request.method !== 'GET') return;
 
-    const shouldCache = API_CACHE_URLS.some((u) => url.pathname.startsWith(u));
+    const shouldCache = API_CACHE_URLS.some((path) => url.pathname.startsWith(path));
     if (!shouldCache) return;
 
     event.respondWith(
       fetch(request.clone())
-        .then((res) => {
-          if (res.ok) {
-            const cloned = res.clone();
+        .then((response) => {
+          if (response.ok) {
+            const cloned = response.clone();
             caches.open(CACHE_NAME).then((cache) => cache.put(request, cloned));
           }
-          return res;
+          return response;
         })
         .catch(async () => {
           const cached = await caches.match(request);
-          return cached || new Response(JSON.stringify({ success: false, error: 'Offline', data: [] }), {
-            headers: { 'Content-Type': 'application/json' },
-          });
+          return (
+            cached ||
+            new Response(JSON.stringify({ success: false, error: 'Offline', data: [] }), {
+              headers: { 'Content-Type': 'application/json' },
+            })
+          );
         }),
     );
     return;
   }
 
-  // Navigation: network-first, offline page fallback
   if (request.mode === 'navigate') {
     event.respondWith(
       fetch(request).catch(async () => {
@@ -92,18 +89,27 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Static assets: cache-first
   event.respondWith(
-    caches.match(request).then((cached) => cached || fetch(request).then((res) => {
-      if (res.ok && (request.url.includes('/icons/') || request.url.includes('/_next/static/'))) {
-        caches.open(CACHE_NAME).then((c) => c.put(request, res.clone()));
-      }
-      return res;
-    })),
+    caches.match(request).then(
+      (cached) =>
+        cached ||
+        fetch(request).then((response) => {
+          if (
+            response.ok &&
+            (
+              request.url.includes('/icons/') ||
+              request.url.includes('/icon-') ||
+              request.url.includes('/apple-icon') ||
+              request.url.includes('/_next/static/')
+            )
+          ) {
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, response.clone()));
+          }
+          return response;
+        }),
+    ),
   );
 });
-
-// ─── Background Sync ──────────────────────────────────────────────────────────
 
 self.addEventListener('sync', (event) => {
   if (event.tag === 'sync-offline-sales') {
@@ -113,22 +119,19 @@ self.addEventListener('sync', (event) => {
 
 async function syncOfflineSales() {
   try {
-    // Signal to the main thread to trigger sync
     const clients = await self.clients.matchAll();
     clients.forEach((client) => client.postMessage({ type: 'SYNC_OFFLINE_SALES' }));
   } catch {}
 }
 
-// ─── Push Notifications ───────────────────────────────────────────────────────
-
 self.addEventListener('push', (event) => {
   if (!event.data) return;
   const data = event.data.json();
   event.waitUntil(
-    self.registration.showNotification(data.title || 'كاشر', {
+    self.registration.showNotification(data.title || 'أولاد أيمن', {
       body: data.message || '',
-      icon: '/icons/icon-192x192.png',
-      badge: '/icons/icon-72x72.png',
+      icon: '/icon-192.png',
+      badge: '/badge-72.png',
       dir: 'rtl',
       lang: 'ar',
       data: data.url ? { url: data.url } : undefined,

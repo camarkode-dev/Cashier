@@ -12,7 +12,7 @@ import toast from 'react-hot-toast';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const { user, initialize, isInitialized } = useAuthStore();
+  const { user, initialize, isInitialized, needsSetup } = useAuthStore();
   const { setOnline, setPendingSyncCount, activeBranchId } = useSettingsStore();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const realtimeRef = useRef<ReturnType<ReturnType<typeof createClient>['channel']> | null>(null);
@@ -25,9 +25,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   // Redirect if not authenticated after initialization
   useEffect(() => {
     if (isInitialized && !user) {
-      router.replace('/login');
+      router.replace(needsSetup ? '/register' : '/login');
     }
-  }, [isInitialized, user]);
+  }, [isInitialized, user, needsSetup]);
 
   useEffect(() => {
     if (!user) return;

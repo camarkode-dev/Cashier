@@ -37,9 +37,8 @@ interface AuthState {
   tenant: AuthTenant | null;
   isLoading: boolean;
   isInitialized: boolean;
-
   isAuthenticated: boolean;
-
+  needsSetup: boolean;
   initialize: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   register: (data: any) => Promise<void>;
@@ -54,6 +53,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   tenant: null,
   isLoading: false,
   isInitialized: false,
+  needsSetup: false,
 
   get isAuthenticated() {
     return !!get().user;
@@ -62,13 +62,34 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   initialize: async () => {
     if (get().isInitialized) return;
     set({ isLoading: true });
+
     try {
       const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
       if (session) {
         await get().refreshUser();
+        if (!get().user) {
+          // Supabase auth OK, but no Prisma record — provisioning gap, not an auth error
+          // Keep the session alive; check provisioning state separately
+          try {
+            const res = await fetch('/api/setup/status');
+            const json = await res.json();
+            const { needsSetup, currentUserProvisioned } = json?.data ?? {};
+            if (needsSetup || !currentUserProvisioned) {
+              set({ needsSetup: true });
+            }
+          } catch {
+            set({ needsSetup: true });
+          }
+        }
       }
-    } catch {}
+    } catch {
+      set({ user: null, tenant: null });
+    }
+
     set({ isLoading: false, isInitialized: true });
   },
 
@@ -79,6 +100,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw new Error(error.message);
       await get().refreshUser();
+      if (!get().user) {
+        await supabase.auth.signOut();
+        throw new Error('تعذر تحميل بيانات الحساب. تحقق من اتصال قاعدة البيانات.');
+      }
     } finally {
       set({ isLoading: false });
     }
@@ -105,7 +130,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       const supabase = createClient();
       await supabase.auth.signOut();
-      set({ user: null });
+      set({ user: null, tenant: null });
     } finally {
       set({ isLoading: false });
     }
@@ -114,14 +139,24 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   refreshUser: async () => {
     try {
       const res = await fetch('/api/auth/me');
+      if (!res.ok) {
+        set({ user: null, tenant: null });
+        return;
+      }
+
       const json = await res.json();
       if (json?.data) {
         set({ user: json.data, tenant: json.data.tenant || null });
+      } else {
+        set({ user: null, tenant: null });
       }
-    } catch {}
+    } catch {
+      set({ user: null, tenant: null });
+    }
   },
 
   setUser: (user) => set({ user }),
 
-  updateTenant: (data) => set((state) => ({ tenant: state.tenant ? { ...state.tenant, ...data } : null })),
+  updateTenant: (data) =>
+    set((state) => ({ tenant: state.tenant ? { ...state.tenant, ...data } : null })),
 }));

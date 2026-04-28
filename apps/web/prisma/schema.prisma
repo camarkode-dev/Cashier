@@ -53,7 +53,7 @@ model Tenant {
   slug      String   @unique
   email     String
   phone     String?
-  currency  String   @default("SAR")
+  currency  String   @default("EGP")
   taxRate   Float    @default(0)
   logo      String?
   createdAt DateTime @default(now())

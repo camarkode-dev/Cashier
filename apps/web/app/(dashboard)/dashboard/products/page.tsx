@@ -2,7 +2,8 @@
 import { useState, useEffect } from 'react';
 import { productsApi, categoriesApi } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
-import { Plus, Search, Package, Edit2, Trash2, AlertTriangle, BarChart2 } from 'lucide-react';
+import { Plus, Search, Package, Edit2, Trash2, AlertTriangle, BarChart2, ScanLine } from 'lucide-react';
+import { BarcodeScanner } from '@/components/pos/BarcodeScanner';
 import { cn } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '@/stores/auth.store';
@@ -17,6 +18,7 @@ export default function ProductsPage() {
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState('');
   const [showForm, setShowForm] = useState(false);
+  const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [form, setForm] = useState({ name: '', nameAr: '', price: '', costPrice: '', barcode: '', sku: '', categoryId: '', unit: 'قطعة', alertThreshold: '5', taxRate: '', initialStock: '0' });
 
@@ -156,6 +158,14 @@ export default function ProductsPage() {
         </div>
       </div>
 
+      {/* Barcode scanner modal */}
+      {showBarcodeScanner && (
+        <BarcodeScanner
+          onScan={(code) => { setForm((f) => ({ ...f, barcode: code })); setShowBarcodeScanner(false); }}
+          onClose={() => setShowBarcodeScanner(false)}
+        />
+      )}
+
       {/* Product form modal */}
       {showForm && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
@@ -174,7 +184,15 @@ export default function ProductsPage() {
                 <div><label className="label">سعر التكلفة</label><input className="input" type="number" step="0.01" value={form.costPrice} onChange={(e) => setForm((f) => ({ ...f, costPrice: e.target.value }))} placeholder="0.00" dir="ltr" /></div>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="label">الباركود</label><input className="input" value={form.barcode} onChange={(e) => setForm((f) => ({ ...f, barcode: e.target.value }))} placeholder="1234567890" dir="ltr" /></div>
+                <div>
+                  <label className="label">الباركود</label>
+                  <div className="flex gap-2">
+                    <input className="input flex-1" value={form.barcode} onChange={(e) => setForm((f) => ({ ...f, barcode: e.target.value }))} placeholder="1234567890" dir="ltr" />
+                    <button type="button" onClick={() => setShowBarcodeScanner(true)} className="p-2.5 rounded-xl bg-brand-50 dark:bg-brand-950 text-brand-500 hover:bg-brand-100 transition-colors flex-shrink-0" title="مسح باركود بالكاميرا">
+                      <ScanLine size={18} />
+                    </button>
+                  </div>
+                </div>
                 <div><label className="label">الفئة</label>
                   <select className="input" value={form.categoryId} onChange={(e) => setForm((f) => ({ ...f, categoryId: e.target.value }))}>
                     <option value="">بدون فئة</option>
