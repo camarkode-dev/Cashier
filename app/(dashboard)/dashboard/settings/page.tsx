@@ -17,10 +17,53 @@ const tabs = [
   { id: 'store', label: 'المتجر', icon: Settings },
   { id: 'printer', label: 'الطابعة', icon: Printer },
   { id: 'language', label: 'اللغة', icon: Globe },
+  { id: 'security', label: 'الأمان', icon: Save },
 ] as const;
+
+
 
 export default function SettingsPage() {
   const { tenant, updateTenant } = useAuthStore();
+
+  // State for password change
+  const [oldPassword, setOldPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [changingPassword, setChangingPassword] = useState(false);
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!oldPassword || !newPassword || !confirmPassword) {
+      toast.error('يرجى ملء جميع الحقول');
+      return;
+    }
+    if (newPassword.length < 8) {
+      toast.error('كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast.error('تأكيد كلمة المرور غير متطابق');
+      return;
+    }
+    setChangingPassword(true);
+    try {
+      const res = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ oldPassword, newPassword }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || 'فشل تغيير كلمة المرور');
+      toast.success('تم تغيير كلمة المرور بنجاح');
+      setOldPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (error: any) {
+      toast.error(error?.message || 'فشل تغيير كلمة المرور');
+    } finally {
+      setChangingPassword(false);
+    }
+  };
   const {
     language,
     setLanguage,
@@ -321,6 +364,55 @@ export default function SettingsPage() {
         </div>
       )}
 
+      {activeTab === 'security' && (
+        <div className="card space-y-4 p-5 max-w-md mx-auto">
+          <h3 className="font-bold text-gray-900 dark:text-white mb-2">تغيير كلمة المرور</h3>
+          <form onSubmit={handleChangePassword} className="space-y-4">
+            <div>
+              <label className="label">كلمة المرور الحالية</label>
+              <input
+                className="input"
+                type="password"
+                value={oldPassword}
+                onChange={e => setOldPassword(e.target.value)}
+                autoComplete="current-password"
+              />
+            </div>
+            <div>
+              <label className="label">كلمة المرور الجديدة</label>
+              <input
+                className="input"
+                type="password"
+                value={newPassword}
+                onChange={e => setNewPassword(e.target.value)}
+                autoComplete="new-password"
+              />
+            </div>
+            <div>
+              <label className="label">تأكيد كلمة المرور الجديدة</label>
+              <input
+                className="input"
+                type="password"
+                value={confirmPassword}
+                onChange={e => setConfirmPassword(e.target.value)}
+                autoComplete="new-password"
+              />
+            </div>
+            <button
+              type="submit"
+              className="btn-brand w-full flex items-center justify-center gap-2"
+              disabled={changingPassword}
+            >
+              {changingPassword ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+              ) : (
+                <Save size={16} />
+              )}
+              تغيير كلمة المرور
+            </button>
+          </form>
+        </div>
+      )}
       {activeTab === 'language' && (
         <div className="card space-y-4 p-5">
           <h3 className="font-bold text-gray-900 dark:text-white">اللغة والعرض</h3>

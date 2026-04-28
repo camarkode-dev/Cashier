@@ -28,6 +28,7 @@ enum PaymentMethod {
   MOBILE
   QR
   SPLIT
+  CREDIT
 }
 
 enum StockTransferStatus {

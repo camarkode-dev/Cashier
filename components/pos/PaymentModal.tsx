@@ -224,10 +224,28 @@ export function PaymentModal({ total, currency, onConfirm, onClose, isProcessing
                   <p className="text-[11px] text-red-600 dark:text-red-400 mt-1">مطلوب كتابة سبب التأجيل للمتابعة</p>
                 )}
               </div>
+              <div>
+                <label className="label text-sm">المبلغ المدفوع الآن</label>
+                <input
+                  ref={inputRef}
+                  type="number"
+                  value={paid}
+                  onChange={(e) => setPaid(e.target.value)}
+                  className="input text-2xl font-black text-center py-4"
+                  dir="ltr"
+                  min={0}
+                  max={total}
+                  step="0.01"
+                />
+              </div>
+              <div className="flex items-center justify-between bg-red-100 dark:bg-red-900 rounded-2xl px-4 py-3">
+                <span className="text-red-700 dark:text-red-400 font-medium">المتبقي على العميل</span>
+                <span className="text-red-600 font-black text-xl">{formatCurrency(Math.max(0, total - paidNum), currency)}</span>
+              </div>
             </div>
           )}
 
-          {/* Paid amount (hide for CREDIT — they owe the full amount) */}
+          {/* Paid amount (hide for CREDIT — أصبح يظهر أعلاه) */}
           {paymentMethod !== 'CREDIT' && (
             <>
               <div>
@@ -264,13 +282,7 @@ export function PaymentModal({ total, currency, onConfirm, onClose, isProcessing
             </>
           )}
 
-          {/* آجر: show full amount as deferred */}
-          {paymentMethod === 'CREDIT' && (
-            <div className="flex items-center justify-between bg-red-50 dark:bg-red-950 rounded-2xl px-4 py-3">
-              <span className="text-red-700 dark:text-red-400 font-medium">مبلغ الآجر</span>
-              <span className="text-red-600 font-black text-xl">{formatCurrency(total, currency)}</span>
-            </div>
-          )}
+          {/* آجر: أصبح يظهر أعلاه مع المتبقي */}
 
           {/* Confirm button */}
           <button
