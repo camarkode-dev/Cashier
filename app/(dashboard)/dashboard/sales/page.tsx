@@ -11,13 +11,13 @@ import { useSettingsStore } from '@/stores/settings.store';
 
 export default function SalesPage() {
   const { tenant } = useAuthStore();
-  const { currency: settingsCurrency } = useSettingsStore();
+  const { country: settingsCountry, currency: settingsCurrency } = useSettingsStore();
   const [sales, setSales] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<any>(null);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  const cur = resolveAppCurrency(tenant?.currency, settingsCurrency);
+  const cur = resolveAppCurrency(tenant?.currency, settingsCountry, settingsCurrency);
 
   const load = async () => {
     setLoading(true);

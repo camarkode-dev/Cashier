@@ -45,6 +45,7 @@ export default function POSPage() {
   const {
     activeBranchId,
     autoPrint,
+    country: settingsCountry,
     currency: settingsCurrency,
     isOnline,
     paperSize,
@@ -65,10 +66,15 @@ export default function POSPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const productsCountRef = useRef(0);
 
   const branchId = activeBranchId || user?.branchId || '';
   const tenantId = user?.tenantId || tenant?.id || '';
-  const currency = resolveAppCurrency(tenant?.currency, settingsCurrency);
+  const currency = resolveAppCurrency(tenant?.currency, settingsCountry, settingsCurrency);
+
+  useEffect(() => {
+    productsCountRef.current = products.length;
+  }, [products.length]);
 
   const hydrateCategories = (items: any[]) => {
     const unique = Array.from(
@@ -79,8 +85,13 @@ export default function POSPage() {
 
   const loadProducts = useCallback(
     async (showBusyState = true) => {
+      if (!user?.id || !tenantId) {
+        setLoading(false);
+        return;
+      }
+
       if (showBusyState) {
-        if (products.length === 0) {
+        if (productsCountRef.current === 0) {
           setLoading(true);
         } else {
           setRefreshing(true);
@@ -91,10 +102,17 @@ export default function POSPage() {
 
       try {
         if (isOnline) {
-          const [productRes, categoryRes] = await Promise.all([
+          const [productResult, categoryResult] = await Promise.allSettled([
             productsApi.list({ limit: INITIAL_PRODUCTS_LIMIT, branchId }),
             categoriesApi.list(),
           ]);
+
+          if (productResult.status === 'rejected') {
+            throw productResult.reason;
+          }
+
+          const productRes = productResult.value;
+          const categoryRes = categoryResult.status === 'fulfilled' ? categoryResult.value : [];
 
           const loadedProducts = Array.isArray((productRes as any)?.data)
             ? (productRes as any).data
@@ -128,14 +146,15 @@ export default function POSPage() {
         setRefreshing(false);
       }
     },
-    [branchId, isOnline, products.length, tenantId],
+    [branchId, isOnline, tenantId, user?.id],
   );
 
   useEffect(() => {
+    if (!user?.id) return;
     loadProducts();
     const timer = window.setTimeout(() => searchRef.current?.focus(), 250);
     return () => window.clearTimeout(timer);
-  }, [loadProducts]);
+  }, [loadProducts, user?.id]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -198,6 +217,8 @@ export default function POSPage() {
   );
 
   useEffect(() => {
+    if (!user?.id || !tenantId) return;
+
     const timer = window.setTimeout(async () => {
       if (!search.trim()) {
         await loadProducts(false);
@@ -236,7 +257,7 @@ export default function POSPage() {
     }, 180);
 
     return () => window.clearTimeout(timer);
-  }, [activeCategory, branchId, isOnline, loadProducts, search, tenantId]);
+  }, [activeCategory, branchId, isOnline, loadProducts, search, tenantId, user?.id]);
 
   const filteredProducts =
     activeCategory === 'all'
@@ -253,6 +274,11 @@ export default function POSPage() {
   };
 
   const handleCheckout = async (paidAmount: number) => {
+    if (!user?.id) {
+      toast.error('بيانات المستخدم غير مكتملة. أعد تسجيل الدخول ثم حاول مرة أخرى.');
+      return;
+    }
+
     try {
       const sale = await posStore.checkout(paidAmount, tenantId, branchId, user!.id);
       setLastSale(sale);
@@ -317,6 +343,17 @@ export default function POSPage() {
     ],
     [activeCategory, cart.length, currency, filteredProducts.length, posStore],
   );
+
+  if (!user?.id) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950">
+        <div className="text-center">
+          <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-brand-200 border-t-brand-500" />
+          <p className="text-sm font-medium text-gray-500">جاري تجهيز بيانات نقطة البيع...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-screen flex flex-col lg:flex-row overflow-hidden">

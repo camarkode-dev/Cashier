@@ -10,14 +10,14 @@ import { useSettingsStore } from '@/stores/settings.store';
 
 export default function CustomersPage() {
   const { tenant } = useAuthStore();
-  const { currency: settingsCurrency } = useSettingsStore();
+  const { country: settingsCountry, currency: settingsCurrency } = useSettingsStore();
   const [customers, setCustomers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [form, setForm] = useState({ name: '', phone: '', email: '', address: '', notes: '' });
-  const cur = resolveAppCurrency(tenant?.currency, settingsCurrency);
+  const cur = resolveAppCurrency(tenant?.currency, settingsCountry, settingsCurrency);
 
   const load = async () => {
     setLoading(true);

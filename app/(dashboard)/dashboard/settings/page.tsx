@@ -47,8 +47,8 @@ export default function SettingsPage() {
   });
 
   useEffect(() => {
-    const resolvedCurrency = tenant?.currency || settingsCurrency || 'EGP';
-    const resolvedCountry = getCountryByCurrency(resolvedCurrency) || country;
+    const resolvedCountry = country || getCountryByCurrency(tenant?.currency || settingsCurrency || 'EGP');
+    const resolvedCurrency = getRegionalConfig(resolvedCountry).currency;
 
     setStoreForm({
       name: tenant?.name || '',

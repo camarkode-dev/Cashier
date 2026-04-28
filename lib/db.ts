@@ -86,6 +86,12 @@ export class PosDatabase extends Dexie {
       customers: 'id, tenantId, phone',
       syncQueue: '++id, type, status, createdAt',
     });
+    this.version(2).stores({
+      products: 'id, tenantId, barcode, categoryId',
+      sales: 'id, offlineId, tenantId, branchId, status, createdAt, [tenantId+status]',
+      customers: 'id, tenantId, phone',
+      syncQueue: '++id, type, status, createdAt',
+    });
   }
 
   async getProductByBarcode(tenantId: string, barcode: string) {

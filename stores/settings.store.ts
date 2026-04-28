@@ -56,6 +56,18 @@ export const useSettingsStore = create<SettingsState>()(
       setOnline: (isOnline) => set({ isOnline }),
       setPendingSyncCount: (pendingSyncCount) => set({ pendingSyncCount }),
     }),
-    { name: 'pos-settings' },
+    {
+      name: 'pos-settings',
+      version: 2,
+      migrate: (persistedState: any, version) => {
+        if (!persistedState || version >= 2) return persistedState;
+
+        return {
+          ...persistedState,
+          country: 'EG',
+          currency: getRegionalConfig('EG').currency,
+        };
+      },
+    },
   ),
 );

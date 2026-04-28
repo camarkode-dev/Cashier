@@ -27,7 +27,7 @@ interface Branch {
 }
 
 export default function InventoryPage() {
-  const { activeBranchId, currency: settingsCurrency } = useSettingsStore();
+  const { activeBranchId, country: settingsCountry, currency: settingsCurrency } = useSettingsStore();
   const { tenant } = useAuthStore();
   const [products, setProducts] = useState<InventoryItem[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -39,7 +39,7 @@ export default function InventoryPage() {
   const [submitting, setSubmitting] = useState(false);
   const [view, setView] = useState<'inventory' | 'lowstock'>('inventory');
 
-  const cur = resolveAppCurrency(tenant?.currency, settingsCurrency);
+  const cur = resolveAppCurrency(tenant?.currency, settingsCountry, settingsCurrency);
 
   const load = async () => {
     setLoading(true);

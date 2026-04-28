@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { createClient } from '@/lib/supabase/client';
-import { getCountryByCurrency } from '@/lib/currency';
+import { getCountryByCurrency, getRegionalConfig } from '@/lib/currency';
 import { useSettingsStore } from '@/stores/settings.store';
 
 interface AuthTenant {
@@ -49,11 +49,10 @@ interface AuthState {
 }
 
 function syncRegionalSettings(tenant: AuthTenant | null) {
-  if (!tenant) return;
-
   const settings = useSettingsStore.getState();
-  const country = getCountryByCurrency(tenant.currency) || settings.country;
-  settings.setRegionalSettings(country, tenant.currency || undefined);
+  const preferredCountry = settings.country || getCountryByCurrency(tenant?.currency);
+  const preferredCurrency = getRegionalConfig(preferredCountry).currency;
+  settings.setRegionalSettings(preferredCountry, preferredCurrency);
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({

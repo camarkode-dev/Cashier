@@ -21,7 +21,7 @@ interface DashStats {
 
 export default function DashboardPage() {
   const { tenant } = useAuthStore();
-  const { activeBranchId, currency: settingsCurrency } = useSettingsStore();
+  const { activeBranchId, country: settingsCountry, currency: settingsCurrency } = useSettingsStore();
   const [stats, setStats] = useState<DashStats | null>(null);
   const [chart, setChart] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -41,7 +41,7 @@ export default function DashboardPage() {
     load();
   }, [activeBranchId]);
 
-  const cur = resolveAppCurrency(tenant?.currency, settingsCurrency);
+  const cur = resolveAppCurrency(tenant?.currency, settingsCountry, settingsCurrency);
 
   const StatCard = ({ label, value, sub, icon: Icon, color }: any) => (
     <div className="card p-5">

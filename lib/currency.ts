@@ -32,7 +32,11 @@ export function getLocaleForCurrency(currency?: string | null) {
 
 export function resolveAppCurrency(
   tenantCurrency?: string | null,
+  settingsCountry?: SupportedCountry | null,
   settingsCurrency?: string | null,
 ) {
-  return tenantCurrency || settingsCurrency || REGIONAL_CONFIG.EG.currency;
+  if (settingsCountry) return getRegionalConfig(settingsCountry).currency;
+  if (settingsCurrency) return settingsCurrency;
+  if (tenantCurrency) return tenantCurrency;
+  return REGIONAL_CONFIG.EG.currency;
 }

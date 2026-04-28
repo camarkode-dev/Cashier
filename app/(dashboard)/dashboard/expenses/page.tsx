@@ -12,13 +12,13 @@ const CATEGORIES = ['إيجار', 'كهرباء', 'مياه', 'رواتب', 'ن�
 
 export default function ExpensesPage() {
   const { tenant } = useAuthStore();
-  const { currency: settingsCurrency } = useSettingsStore();
+  const { country: settingsCountry, currency: settingsCurrency } = useSettingsStore();
   const [expenses, setExpenses] = useState<any[]>([]);
   const [summary, setSummary] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ title: '', amount: '', category: 'أخرى', notes: '', paymentMethod: 'CASH' });
-  const cur = resolveAppCurrency(tenant?.currency, settingsCurrency);
+  const cur = resolveAppCurrency(tenant?.currency, settingsCountry, settingsCurrency);
 
   const load = async () => {
     setLoading(true);

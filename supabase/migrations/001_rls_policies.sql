@@ -34,12 +34,12 @@ ALTER TABLE "Supplier"           ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "user_read_own"
   ON "User" FOR SELECT
-  USING (auth.uid() = id);
+  USING (id = auth.uid()::text);
 
 CREATE POLICY "user_update_own"
   ON "User" FOR UPDATE
-  USING (auth.uid() = id)
-  WITH CHECK (auth.uid() = id);
+  USING (id = auth.uid()::text)
+  WITH CHECK (id = auth.uid()::text);
 
 -- Block direct inserts/deletes from client (only API can do this)
 CREATE POLICY "user_no_client_insert"
