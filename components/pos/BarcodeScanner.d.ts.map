@@ -1,1 +1,0 @@
-{"version":3,"file":"BarcodeScanner.d.ts","sourceRoot":"","sources":["BarcodeScanner.tsx"],"names":[],"mappings":"AAKA,UAAU,mBAAmB;IAC3B,MAAM,EAAE,CAAC,OAAO,EAAE,MAAM,KAAK,IAAI,CAAC;IAClC,OAAO,EAAE,MAAM,IAAI,CAAC;CACrB;AAED,wBAAgB,cAAc,CAAC,EAAE,MAAM,EAAE,OAAO,EAAE,EAAE,mBAAmB,2CAkLtE"}

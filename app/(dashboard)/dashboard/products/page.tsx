@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { productsApi, categoriesApi } from '@/lib/api';
+import { resolveAppCurrency } from '@/lib/currency';
 import { formatCurrency } from '@/lib/utils';
 import { Plus, Search, Package, Edit2, Trash2, AlertTriangle, BarChart2, ScanLine } from 'lucide-react';
 import { BarcodeScanner } from '@/components/pos/BarcodeScanner';
@@ -11,7 +12,7 @@ import { useSettingsStore } from '@/stores/settings.store';
 
 export default function ProductsPage() {
   const { tenant } = useAuthStore();
-  const { activeBranchId } = useSettingsStore();
+  const { activeBranchId, currency: settingsCurrency } = useSettingsStore();
   const [products, setProducts] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -22,7 +23,7 @@ export default function ProductsPage() {
   const [editing, setEditing] = useState<any>(null);
   const [form, setForm] = useState({ name: '', nameAr: '', price: '', costPrice: '', barcode: '', sku: '', categoryId: '', unit: 'قطعة', alertThreshold: '5', taxRate: '', initialStock: '0' });
 
-  const cur = tenant?.currency || 'EGP';
+  const cur = resolveAppCurrency(tenant?.currency, settingsCurrency);
 
   const load = async () => {
     setLoading(true);

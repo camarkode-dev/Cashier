@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
+import { AuthUnavailableState } from '@/components/common/AuthUnavailableState';
 import { useAuthStore } from '@/stores/auth.store';
 import { useSettingsStore } from '@/stores/settings.store';
 import { syncEngine } from '@/lib/sync';
@@ -12,7 +13,7 @@ import toast from 'react-hot-toast';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const { user, initialize, isInitialized, needsSetup } = useAuthStore();
+  const { user, initialize, isInitialized, needsSetup, authIssue } = useAuthStore();
   const { setOnline, setPendingSyncCount, activeBranchId } = useSettingsStore();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const realtimeRef = useRef<ReturnType<ReturnType<typeof createClient>['channel']> | null>(null);
@@ -83,6 +84,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <div className="w-8 h-8 border-3 border-brand-500 border-t-transparent rounded-full animate-spin" />
       </div>
     );
+  }
+
+  if (!user && authIssue === 'unavailable') {
+    return <AuthUnavailableState onRetry={() => initialize(true)} />;
   }
 
   if (!user) return null;

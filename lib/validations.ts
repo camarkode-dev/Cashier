@@ -140,3 +140,12 @@ export const supplierSchema = z.object({
   address: z.string().optional(),
   notes: z.string().optional(),
 });
+
+export const tenantSettingsSchema = z.object({
+  name: z.string().min(1),
+  nameAr: z.string().optional(),
+  phone: z.string().optional(),
+  currency: z.string().min(3).max(3).default('EGP'),
+  taxRate: z.number().min(0).max(100).default(0),
+  country: z.string().optional(),
+});

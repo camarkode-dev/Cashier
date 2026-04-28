@@ -72,15 +72,6 @@ export const tenantApi = {
   stats: () => get('/tenants/stats'),
 };
 
-export const licensesApi = {
-  status: () => get('/licenses/status'),
-  activate: (key: string, fingerprint: string, deviceName?: string) =>
-    post('/licenses/activate', { key, fingerprint, deviceName }),
-  devices: () => get('/licenses/devices'),
-  deactivate: (id: string) => del(`/licenses/devices/${id}`),
-  offlineRequest: (fingerprint: string) => post('/licenses/offline-request', { fingerprint }),
-};
-
 export const productsApi = {
   list: (params?: any) => get('/products', params),
   get: (id: string) => get(`/products/${id}`),

@@ -1,21 +1,18 @@
 import { create } from 'zustand';
 import { createClient } from '@/lib/supabase/client';
+import { getCountryByCurrency } from '@/lib/currency';
+import { useSettingsStore } from '@/stores/settings.store';
 
 interface AuthTenant {
   id: string;
   name: string;
   nameAr?: string | null;
   slug?: string;
+  phone?: string | null;
+  country?: string | null;
   currency?: string | null;
   taxRate?: number | null;
   logo?: string | null;
-  license?: {
-    type: string;
-    status: string;
-    expiresAt?: string | null;
-    maxDevices?: number | null;
-    maxUsers?: number | null;
-  } | null;
 }
 
 interface AuthUser {
@@ -32,6 +29,8 @@ interface AuthUser {
   tenantId?: string | null;
 }
 
+type RefreshUserStatus = 'ok' | 'unauthorized' | 'unavailable';
+
 interface AuthState {
   user: AuthUser | null;
   tenant: AuthTenant | null;
@@ -39,13 +38,22 @@ interface AuthState {
   isInitialized: boolean;
   isAuthenticated: boolean;
   needsSetup: boolean;
-  initialize: () => Promise<void>;
+  authIssue: 'none' | 'unavailable';
+  initialize: (force?: boolean) => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   register: (data: any) => Promise<void>;
   logout: () => Promise<void>;
-  refreshUser: () => Promise<void>;
+  refreshUser: () => Promise<RefreshUserStatus>;
   setUser: (user: AuthUser | null) => void;
   updateTenant: (data: Partial<AuthTenant>) => void;
+}
+
+function syncRegionalSettings(tenant: AuthTenant | null) {
+  if (!tenant) return;
+
+  const settings = useSettingsStore.getState();
+  const country = getCountryByCurrency(tenant.currency) || settings.country;
+  settings.setRegionalSettings(country, tenant.currency || undefined);
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -54,14 +62,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isLoading: false,
   isInitialized: false,
   needsSetup: false,
+  authIssue: 'none',
 
   get isAuthenticated() {
     return !!get().user;
   },
 
-  initialize: async () => {
-    if (get().isInitialized) return;
-    set({ isLoading: true });
+  initialize: async (force = false) => {
+    if (get().isInitialized && !force) return;
+    set({ isLoading: true, authIssue: 'none' });
 
     try {
       const supabase = createClient();
@@ -70,12 +79,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       } = await supabase.auth.getSession();
 
       if (session) {
-        await get().refreshUser();
+        const status = await get().refreshUser();
+
+        if (status === 'unavailable') {
+          set({ authIssue: 'unavailable' });
+        }
+
         if (!get().user) {
-          // Supabase auth OK, but no Prisma record — provisioning gap, not an auth error
-          // Keep the session alive; check provisioning state separately
           try {
-            const res = await fetch('/api/setup/status');
+            const res = await fetch('/api/setup/status', { cache: 'no-store' });
             const json = await res.json();
             const { needsSetup, currentUserProvisioned } = json?.data ?? {};
             if (needsSetup || !currentUserProvisioned) {
@@ -85,9 +97,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             set({ needsSetup: true });
           }
         }
+      } else {
+        set({ user: null, tenant: null, needsSetup: false });
       }
     } catch {
-      set({ user: null, tenant: null });
+      set({ user: null, tenant: null, authIssue: 'unavailable' });
     }
 
     set({ isLoading: false, isInitialized: true });
@@ -99,10 +113,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const supabase = createClient();
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw new Error(error.message);
-      await get().refreshUser();
-      if (!get().user) {
+
+      const status = await get().refreshUser();
+      if (status !== 'ok' || !get().user) {
         await supabase.auth.signOut();
-        throw new Error('تعذر تحميل بيانات الحساب. تحقق من اتصال قاعدة البيانات.');
+        throw new Error(
+          status === 'unavailable'
+            ? 'تعذر الوصول إلى بيانات الحساب الآن. حاول مرة أخرى بعد قليل.'
+            : 'تعذر تحميل بيانات الحساب. تحقق من إعداد المستخدم في قاعدة البيانات.',
+        );
       }
     } finally {
       set({ isLoading: false });
@@ -130,7 +149,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       const supabase = createClient();
       await supabase.auth.signOut();
-      set({ user: null, tenant: null });
+      set({ user: null, tenant: null, authIssue: 'none', needsSetup: false });
     } finally {
       set({ isLoading: false });
     }
@@ -138,25 +157,45 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   refreshUser: async () => {
     try {
-      const res = await fetch('/api/auth/me');
+      const res = await fetch('/api/auth/me', { cache: 'no-store' });
+
+      if (res.status === 401) {
+        set({ user: null, tenant: null, authIssue: 'none' });
+        return 'unauthorized';
+      }
+
+      if (res.status === 503) {
+        set({ authIssue: 'unavailable' });
+        return 'unavailable';
+      }
+
       if (!res.ok) {
-        set({ user: null, tenant: null });
-        return;
+        set({ authIssue: 'unavailable' });
+        return 'unavailable';
       }
 
       const json = await res.json();
       if (json?.data) {
-        set({ user: json.data, tenant: json.data.tenant || null });
-      } else {
-        set({ user: null, tenant: null });
+        const tenant = json.data.tenant || null;
+        set({ user: json.data, tenant, authIssue: 'none', needsSetup: false });
+        syncRegionalSettings(tenant);
+        return 'ok';
       }
+
+      set({ user: null, tenant: null, authIssue: 'none' });
+      return 'unauthorized';
     } catch {
-      set({ user: null, tenant: null });
+      set({ authIssue: 'unavailable' });
+      return 'unavailable';
     }
   },
 
   setUser: (user) => set({ user }),
 
   updateTenant: (data) =>
-    set((state) => ({ tenant: state.tenant ? { ...state.tenant, ...data } : null })),
+    set((state) => {
+      const tenant = state.tenant ? { ...state.tenant, ...data } : null;
+      syncRegionalSettings(tenant);
+      return { tenant };
+    }),
 }));

@@ -1,20 +1,23 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { salesApi } from '@/lib/api';
+import { resolveAppCurrency } from '@/lib/currency';
 import { formatCurrency, formatDate, getPaymentMethodLabel } from '@/lib/utils';
 import { Search, ReceiptText, Eye, RotateCcw } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth.store';
 import { cn } from '@/lib/utils';
 import toast from 'react-hot-toast';
+import { useSettingsStore } from '@/stores/settings.store';
 
 export default function SalesPage() {
   const { tenant } = useAuthStore();
+  const { currency: settingsCurrency } = useSettingsStore();
   const [sales, setSales] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<any>(null);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  const cur = tenant?.currency || 'EGP';
+  const cur = resolveAppCurrency(tenant?.currency, settingsCurrency);
 
   const load = async () => {
     setLoading(true);

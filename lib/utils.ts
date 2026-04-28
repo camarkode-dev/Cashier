@@ -1,12 +1,14 @@
 import { type ClassValue, clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { getLocaleForCurrency } from '@/lib/currency';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function formatCurrency(amount: number, currency = 'EGP', locale = 'ar-EG') {
-  return new Intl.NumberFormat(locale, {
+export function formatCurrency(amount: number, currency = 'EGP', locale?: string) {
+  const resolvedLocale = locale || getLocaleForCurrency(currency);
+  return new Intl.NumberFormat(resolvedLocale, {
     style: 'currency',
     currency,
     minimumFractionDigits: 2,

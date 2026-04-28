@@ -1,6 +1,7 @@
 'use client';
-import { useEffect, useRef, useState, useCallback } from 'react';
-import { X, ScanLine, Camera, Keyboard } from 'lucide-react';
+
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Camera, Keyboard, ScanLine, ShieldAlert, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface BarcodeScannerProps {
@@ -14,24 +15,27 @@ export function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps) {
   const [manualCode, setManualCode] = useState('');
   const [cameraMode, setCameraMode] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [cameraPermission, setCameraPermission] = useState<'unknown' | 'prompt' | 'granted' | 'denied'>('unknown');
   const [isScanning, setIsScanning] = useState(false);
-  const SCANNER_ID = 'html5qr-scanner';
+  const scannerId = 'html5qr-scanner';
 
   const stopCamera = useCallback(async () => {
     try {
       if (scannerRef.current?.isScanning) {
         await scannerRef.current.stop();
-        scannerRef.current.clear();
+        await scannerRef.current.clear();
       }
     } catch {}
+
     setIsScanning(false);
   }, []);
 
   const startCamera = useCallback(async () => {
     setCameraError(null);
+
     try {
       const { Html5Qrcode } = await import('html5-qrcode');
-      scannerRef.current = new Html5Qrcode(SCANNER_ID);
+      scannerRef.current = new Html5Qrcode(scannerId);
       await scannerRef.current.start(
         { facingMode: 'environment' },
         { fps: 10, qrbox: { width: 250, height: 150 } },
@@ -39,103 +43,177 @@ export function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps) {
           stopCamera();
           onScan(decodedText);
         },
-        undefined,
       );
       setIsScanning(true);
-    } catch (err: any) {
-      setCameraError('لا يمكن الوصول للكاميرا. تحقق من الأذونات.');
+      setCameraPermission('granted');
+    } catch {
+      setCameraPermission('denied');
+      setCameraError('تعذر الوصول إلى الكاميرا. اسمح للتطبيق باستخدام الكاميرا ثم حاول مرة أخرى.');
       setCameraMode(false);
     }
   }, [onScan, stopCamera]);
+
+  const requestCameraPermission = useCallback(async () => {
+    setCameraError(null);
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraError('هذا المتصفح لا يدعم الوصول إلى الكاميرا.');
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } },
+      });
+      stream.getTracks().forEach((track) => track.stop());
+      setCameraPermission('granted');
+      setCameraMode(true);
+    } catch {
+      setCameraPermission('denied');
+      setCameraError('تم رفض إذن الكاميرا. فعّل إذن الكاميرا من المتصفح ثم أعد المحاولة.');
+    }
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const checkPermission = async () => {
+      try {
+        if (!navigator.permissions?.query) {
+          if (mounted) setCameraPermission('prompt');
+          return;
+        }
+
+        const permission = await navigator.permissions.query({ name: 'camera' as PermissionName });
+        if (!mounted) return;
+
+        setCameraPermission(
+          permission.state === 'granted'
+            ? 'granted'
+            : permission.state === 'denied'
+              ? 'denied'
+              : 'prompt',
+        );
+      } catch {
+        if (mounted) setCameraPermission('prompt');
+      }
+    };
+
+    checkPermission();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (cameraMode) {
       startCamera();
     } else {
       stopCamera();
-      setTimeout(() => inputRef.current?.focus(), 100);
+      window.setTimeout(() => inputRef.current?.focus(), 100);
     }
-    return () => { stopCamera(); };
-  }, [cameraMode]);
 
-  // Hardware USB scanner: rapid keystrokes ending in Enter
+    return () => {
+      stopCamera();
+    };
+  }, [cameraMode, startCamera, stopCamera]);
+
   useEffect(() => {
     let buffer = '';
     let timer: ReturnType<typeof setTimeout>;
 
-    const onKey = (e: KeyboardEvent) => {
-      if (e.target === inputRef.current) return;
-      if (e.key === 'Enter' && buffer.length >= 3) {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.target === inputRef.current) return;
+
+      if (event.key === 'Enter' && buffer.length >= 3) {
         onScan(buffer.trim());
         buffer = '';
         clearTimeout(timer);
         return;
       }
-      if (e.key.length === 1) {
-        buffer += e.key;
+
+      if (event.key.length === 1) {
+        buffer += event.key;
         clearTimeout(timer);
-        timer = setTimeout(() => { buffer = ''; }, 150);
+        timer = setTimeout(() => {
+          buffer = '';
+        }, 150);
       }
     };
 
     window.addEventListener('keydown', onKey);
-    return () => { window.removeEventListener('keydown', onKey); clearTimeout(timer); };
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      clearTimeout(timer);
+    };
   }, [onScan]);
 
-  // ESC to close
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', h);
-    return () => window.removeEventListener('keydown', h);
+    const handler = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-sm border border-gray-100 dark:border-gray-800 animate-scale-in">
-        {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-gray-100 dark:border-gray-800">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-sm rounded-3xl border border-gray-100 bg-white shadow-2xl animate-scale-in dark:border-gray-800 dark:bg-gray-900">
+        <div className="flex items-center justify-between border-b border-gray-100 p-5 dark:border-gray-800">
           <div className="flex items-center gap-2">
             <ScanLine size={20} className="text-brand-500" />
             <h2 className="font-bold text-gray-900 dark:text-white">مسح الباركود</h2>
           </div>
-          <button onClick={onClose} className="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+          <button onClick={onClose} className="rounded-xl p-2 transition-colors hover:bg-gray-100 dark:hover:bg-gray-800">
             <X size={20} />
           </button>
         </div>
 
-        <div className="p-5 space-y-4">
-          {/* Camera container */}
+        <div className="space-y-4 p-5">
           {cameraMode && (
-            <div className="relative rounded-2xl overflow-hidden bg-black aspect-video">
-              <div id={SCANNER_ID} className="w-full h-full" />
-              {/* Scan guide overlay */}
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div className="w-48 h-28 border-2 border-brand-400 rounded-xl relative">
-                  <div className="absolute top-0 start-0 w-5 h-5 border-t-2 border-s-2 border-brand-400 rounded-tl-lg" />
-                  <div className="absolute top-0 end-0 w-5 h-5 border-t-2 border-e-2 border-brand-400 rounded-tr-lg" />
-                  <div className="absolute bottom-0 start-0 w-5 h-5 border-b-2 border-s-2 border-brand-400 rounded-bl-lg" />
-                  <div className="absolute bottom-0 end-0 w-5 h-5 border-b-2 border-e-2 border-brand-400 rounded-br-lg" />
-                  <div className="absolute top-1/2 left-0 right-0 h-0.5 bg-brand-400/70 animate-pulse" />
+            <div className="relative aspect-video overflow-hidden rounded-2xl bg-black">
+              <div id={scannerId} className="h-full w-full" />
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                <div className="relative h-28 w-48 rounded-xl border-2 border-brand-400">
+                  <div className="absolute start-0 top-0 h-5 w-5 rounded-tl-lg border-s-2 border-t-2 border-brand-400" />
+                  <div className="absolute end-0 top-0 h-5 w-5 rounded-tr-lg border-e-2 border-t-2 border-brand-400" />
+                  <div className="absolute bottom-0 start-0 h-5 w-5 rounded-bl-lg border-b-2 border-s-2 border-brand-400" />
+                  <div className="absolute bottom-0 end-0 h-5 w-5 rounded-br-lg border-b-2 border-e-2 border-brand-400" />
+                  <div className="absolute left-0 right-0 top-1/2 h-0.5 bg-brand-400/70 animate-pulse" />
                 </div>
               </div>
               {isScanning && (
                 <div className="absolute bottom-2 left-0 right-0 flex justify-center">
-                  <span className="px-3 py-1 bg-brand-500/80 text-white text-xs rounded-full">جاري المسح...</span>
+                  <span className="rounded-full bg-brand-500/80 px-3 py-1 text-xs text-white">جاري المسح...</span>
                 </div>
               )}
             </div>
           )}
 
+          {!cameraMode && cameraPermission !== 'granted' && (
+            <div className="rounded-2xl border border-brand-100 bg-brand-50 px-4 py-3 text-sm text-brand-700 dark:border-brand-900 dark:bg-brand-950 dark:text-brand-300">
+              <div className="flex items-start gap-2">
+                <ShieldAlert size={16} className="mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="font-bold">يلزم السماح باستخدام الكاميرا</p>
+                  <p className="mt-1 text-xs leading-5">
+                    عند الضغط على الزر التالي سيطلب المتصفح إذن الكاميرا حتى تعمل خاصية المسح.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {cameraError && (
-            <div className="text-center py-3 text-amber-600 text-sm bg-amber-50 dark:bg-amber-950 rounded-2xl px-4">
+            <div className="rounded-2xl bg-amber-50 px-4 py-3 text-center text-sm text-amber-700 dark:bg-amber-950 dark:text-amber-300">
               {cameraError}
             </div>
           )}
 
-          {/* Manual input */}
           <div>
-            <p className="text-xs text-gray-400 mb-2 text-center">
-              {cameraMode ? 'أو أدخل الباركود يدوياً' : 'امسح بالباركود أو أدخله يدوياً'}
+            <p className="mb-2 text-center text-xs text-gray-400">
+              {cameraMode ? 'أو أدخل الباركود يدويًا' : 'امسح بالكاميرا أو أدخل الباركود يدويًا'}
             </p>
             <div className="flex gap-2">
               <input
@@ -144,9 +222,9 @@ export function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps) {
                 className="input flex-1 text-center text-lg font-mono tracking-widest"
                 placeholder="الباركود..."
                 value={manualCode}
-                onChange={(e) => setManualCode(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && manualCode.trim()) {
+                onChange={(event) => setManualCode(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && manualCode.trim()) {
                     onScan(manualCode.trim());
                     setManualCode('');
                   }
@@ -155,7 +233,11 @@ export function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps) {
                 autoComplete="off"
               />
               <button
-                onClick={() => { if (manualCode.trim()) { onScan(manualCode.trim()); setManualCode(''); } }}
+                onClick={() => {
+                  if (!manualCode.trim()) return;
+                  onScan(manualCode.trim());
+                  setManualCode('');
+                }}
                 disabled={!manualCode.trim()}
                 className="btn-brand px-4 py-2.5 text-sm disabled:opacity-40"
               >
@@ -164,23 +246,38 @@ export function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps) {
             </div>
           </div>
 
-          {/* Camera toggle */}
           <button
-            onClick={() => { setCameraMode((v) => !v); setCameraError(null); }}
+            onClick={() => {
+              if (cameraMode) {
+                setCameraMode(false);
+                return;
+              }
+
+              if (cameraPermission === 'granted') {
+                setCameraMode(true);
+                return;
+              }
+
+              requestCameraPermission();
+            }}
             className={cn(
-              'w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-medium transition-colors',
+              'w-full rounded-xl border py-2.5 text-sm font-medium transition-colors flex items-center justify-center gap-2',
               cameraMode
                 ? 'border-red-200 text-red-500 hover:bg-red-50 dark:hover:bg-red-950'
-                : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800',
+                : 'border-gray-200 text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800',
             )}
           >
             <Camera size={16} />
-            {cameraMode ? 'إيقاف الكاميرا' : 'تفعيل كاميرا القراءة'}
+            {cameraMode
+              ? 'إيقاف الكاميرا'
+              : cameraPermission === 'granted'
+                ? 'تشغيل كاميرا القراءة'
+                : 'طلب إذن الكاميرا'}
           </button>
 
-          <div className="flex items-center gap-2 text-xs text-gray-400 justify-center">
+          <div className="flex items-center justify-center gap-2 text-xs text-gray-400">
             <Keyboard size={12} />
-            ماسح USB سيتم الكشف عنه تلقائياً
+            ماسح USB يعمل تلقائيًا بدون إعداد إضافي
           </div>
         </div>
       </div>

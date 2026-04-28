@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { productsApi, branchesApi } from '@/lib/api';
+import { resolveAppCurrency } from '@/lib/currency';
 import { useSettingsStore } from '@/stores/settings.store';
 import { useAuthStore } from '@/stores/auth.store';
 import { formatCurrency } from '@/lib/utils';
@@ -26,7 +27,7 @@ interface Branch {
 }
 
 export default function InventoryPage() {
-  const { activeBranchId } = useSettingsStore();
+  const { activeBranchId, currency: settingsCurrency } = useSettingsStore();
   const { tenant } = useAuthStore();
   const [products, setProducts] = useState<InventoryItem[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -38,7 +39,7 @@ export default function InventoryPage() {
   const [submitting, setSubmitting] = useState(false);
   const [view, setView] = useState<'inventory' | 'lowstock'>('inventory');
 
-  const cur = tenant?.currency || 'EGP';
+  const cur = resolveAppCurrency(tenant?.currency, settingsCurrency);
 
   const load = async () => {
     setLoading(true);

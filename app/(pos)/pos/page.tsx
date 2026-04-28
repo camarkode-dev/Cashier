@@ -1,29 +1,54 @@
 'use client';
-import { useState, useEffect, useRef, useCallback } from 'react';
+
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import { usePOSStore } from '@/stores/pos.store';
-import { useAuthStore } from '@/stores/auth.store';
-import { useSettingsStore } from '@/stores/settings.store';
-import { productsApi } from '@/lib/api';
+import toast from 'react-hot-toast';
+import {
+  AlertTriangle,
+  LayoutDashboard,
+  Package,
+  RefreshCw,
+  Receipt,
+  ScanBarcode,
+  ScanLine,
+  Search,
+  ShoppingCart,
+  Wifi,
+  WifiOff,
+} from 'lucide-react';
+import { categoriesApi, productsApi } from '@/lib/api';
+import { resolveAppCurrency } from '@/lib/currency';
 import { db } from '@/lib/db';
-import { formatCurrency, debounce } from '@/lib/utils';
 import { thermalPrinter } from '@/lib/printing';
+import { cn, formatCurrency } from '@/lib/utils';
+import { Logo } from '@/components/common/Logo';
 import { BarcodeScanner } from '@/components/pos/BarcodeScanner';
 import { CartPanel } from '@/components/pos/CartPanel';
 import { PaymentModal } from '@/components/pos/PaymentModal';
 import { ReceiptModal } from '@/components/pos/ReceiptModal';
-import { Logo } from '@/components/common/Logo';
-import toast from 'react-hot-toast';
-import {
-  Search, ScanLine, ArrowRight, LayoutDashboard, Wifi, WifiOff,
-  ShoppingCart, Package, RefreshCw,
-} from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { useAuthStore } from '@/stores/auth.store';
+import { usePOSStore } from '@/stores/pos.store';
+import { useSettingsStore } from '@/stores/settings.store';
+
+const INITIAL_PRODUCTS_LIMIT = 120;
+
+const workflowSteps = [
+  { title: '1. ابحث أو امسح', description: 'استخدم البحث أو الباركود للوصول للمنتج بسرعة.' },
+  { title: '2. أضف للسلة', description: 'اضغط على المنتج، والكمية تتحدث فورًا.' },
+  { title: '3. راجع الفاتورة', description: 'الخصومات والضرائب تظهر مباشرة في السلة.' },
+  { title: '4. أنهِ الدفع', description: 'ادفع واطبع الإيصال من نفس الشاشة.' },
+];
 
 export default function POSPage() {
   const router = useRouter();
   const { user, tenant } = useAuthStore();
-  const { activeBranchId, isOnline, autoPrint, printerType, printerIp, paperSize } = useSettingsStore();
+  const {
+    activeBranchId,
+    autoPrint,
+    currency: settingsCurrency,
+    isOnline,
+    paperSize,
+  } = useSettingsStore();
   const posStore = usePOSStore();
   const { addItem, cart } = posStore;
 
@@ -31,94 +56,205 @@ export default function POSPage() {
   const [categories, setCategories] = useState<any[]>([]);
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [search, setSearch] = useState('');
+  const [quickBarcode, setQuickBarcode] = useState('');
   const [scanning, setScanning] = useState(false);
   const [showPayment, setShowPayment] = useState(false);
   const [showReceipt, setShowReceipt] = useState(false);
   const [lastSale, setLastSale] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
   const branchId = activeBranchId || user?.branchId || '';
+  const tenantId = user?.tenantId || tenant?.id || '';
+  const currency = resolveAppCurrency(tenant?.currency, settingsCurrency);
 
-  // Load products (online or offline)
-  const loadProducts = useCallback(async () => {
-    try {
-      if (isOnline) {
-        const res: any = await productsApi.list({ limit: 500, branchId });
-        const data = res?.data || [];
-        setProducts(data);
-        // Extract categories
-        const cats = Array.from(new Map(
-          data.filter((p: any) => p.category).map((p: any) => [p.categoryId, p.category])
-        ).values());
-        setCategories(cats as any[]);
-      } else {
-        const offline = await db.products.where('tenantId').equals(user?.tenantId || '').toArray();
-        setProducts(offline.map((p) => ({ ...p, inventory: [{ quantity: p.stock }] })));
+  const hydrateCategories = (items: any[]) => {
+    const unique = Array.from(
+      new Map(items.filter((item: any) => item.category).map((item: any) => [item.categoryId, item.category])).values(),
+    );
+    setCategories(unique as any[]);
+  };
+
+  const loadProducts = useCallback(
+    async (showBusyState = true) => {
+      if (showBusyState) {
+        if (products.length === 0) {
+          setLoading(true);
+        } else {
+          setRefreshing(true);
+        }
       }
-    } catch {}
-    setLoading(false);
-  }, [isOnline, branchId, user?.tenantId]);
+
+      setLoadError(null);
+
+      try {
+        if (isOnline) {
+          const [productRes, categoryRes] = await Promise.all([
+            productsApi.list({ limit: INITIAL_PRODUCTS_LIMIT, branchId }),
+            categoriesApi.list(),
+          ]);
+
+          const loadedProducts = Array.isArray((productRes as any)?.data)
+            ? (productRes as any).data
+            : Array.isArray(productRes)
+              ? productRes
+              : [];
+          const loadedCategories = Array.isArray(categoryRes)
+            ? categoryRes
+            : Array.isArray((categoryRes as any)?.data)
+              ? (categoryRes as any).data
+              : [];
+
+          setProducts(loadedProducts);
+          setCategories(loadedCategories.length ? loadedCategories : []);
+          if (!loadedCategories.length) {
+            hydrateCategories(loadedProducts);
+          }
+        } else {
+          const offlineProducts = await db.products.where('tenantId').equals(tenantId).toArray();
+          const shapedProducts = offlineProducts.map((product) => ({
+            ...product,
+            inventory: [{ quantity: product.stock ?? 0 }],
+          }));
+          setProducts(shapedProducts);
+          hydrateCategories(shapedProducts);
+        }
+      } catch (error: any) {
+        setLoadError(error?.message || 'تعذر تحميل بيانات البيع الآن');
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [branchId, isOnline, products.length, tenantId],
+  );
 
   useEffect(() => {
     loadProducts();
-    // Auto-focus search
-    setTimeout(() => searchRef.current?.focus(), 300);
+    const timer = window.setTimeout(() => searchRef.current?.focus(), 250);
+    return () => window.clearTimeout(timer);
   }, [loadProducts]);
 
-  // Keyboard shortcut: F2 = barcode scanner, Escape = clear
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'F2') { e.preventDefault(); setScanning(true); }
-      if (e.key === 'Escape') { setScanning(false); setSearch(''); searchRef.current?.focus(); }
-      if (e.key === 'F10') { e.preventDefault(); if (cart.length) setShowPayment(true); }
-      if (e.key === 'F5') { e.preventDefault(); loadProducts(); }
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'F2') {
+        event.preventDefault();
+        setScanning(true);
+      }
+      if (event.key === 'Escape') {
+        setScanning(false);
+        setQuickBarcode('');
+        setSearch('');
+        searchRef.current?.focus();
+      }
+      if (event.key === 'F10') {
+        event.preventDefault();
+        if (cart.length) setShowPayment(true);
+      }
+      if (event.key === 'F5') {
+        event.preventDefault();
+        loadProducts();
+      }
     };
+
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [cart.length, loadProducts]);
 
-  const handleBarcodeScanned = async (barcode: string) => {
-    setScanning(false);
-    try {
-      let product: any;
-      if (isOnline) {
-        const res: any = await productsApi.byBarcode(barcode, branchId);
-        product = res?.data || res;
-      } else {
-        product = await db.getProductByBarcode(user?.tenantId || '', barcode);
-      }
-      if (product) {
-        addItem(product);
-        toast.success(`تمت الإضافة: ${product.nameAr || product.name}`, { duration: 1500 });
-      } else {
-        toast.error('المنتج غير موجود', { duration: 2000 });
-      }
-    } catch {
-      toast.error('خطأ في قراءة الباركود');
-    }
-  };
+  const handleBarcodeScanned = useCallback(
+    async (barcode: string) => {
+      setScanning(false);
 
-  const handleSearch = debounce(async (q: string) => {
-    if (!q.trim()) { loadProducts(); return; }
-    try {
-      if (isOnline) {
-        const res: any = await productsApi.list({ search: q, branchId, limit: 50 });
-        setProducts(res?.data || []);
-      } else {
-        const results = await db.searchProducts(user?.tenantId || '', q);
-        setProducts(results.map((p) => ({ ...p, inventory: [{ quantity: p.stock }] })));
-      }
-    } catch {}
-  }, 200);
+      try {
+        let product: any = null;
 
-  const filteredProducts = products.filter((p) =>
-    activeCategory === 'all' || p.categoryId === activeCategory
+        if (isOnline) {
+          const result = await productsApi.byBarcode(barcode, branchId);
+          product = (result as any)?.data || result;
+        } else {
+          product = await db.getProductByBarcode(tenantId, barcode);
+        }
+
+        if (!product) {
+          toast.error('لم يتم العثور على منتج بهذا الباركود');
+          return;
+        }
+
+        const stock = product.inventory?.[0]?.quantity ?? product.stock ?? 0;
+        if (stock <= 0) {
+          toast.error('المنتج غير متاح في المخزون حاليًا');
+          return;
+        }
+
+        addItem({ ...product, stock });
+        toast.success(`تمت إضافة ${product.nameAr || product.name}`, { duration: 1400 });
+      } catch {
+        toast.error('حدث خطأ أثناء قراءة الباركود');
+      }
+    },
+    [addItem, branchId, isOnline, tenantId],
   );
+
+  useEffect(() => {
+    const timer = window.setTimeout(async () => {
+      if (!search.trim()) {
+        await loadProducts(false);
+        return;
+      }
+
+      try {
+        if (isOnline) {
+          const result = await productsApi.list({
+            search,
+            categoryId: activeCategory === 'all' ? undefined : activeCategory,
+            branchId,
+            limit: 60,
+          });
+          const loadedProducts = Array.isArray((result as any)?.data)
+            ? (result as any).data
+            : Array.isArray(result)
+              ? result
+              : [];
+          setProducts(loadedProducts);
+        } else {
+          const results = await db.searchProducts(tenantId, search, 60);
+          const shapedProducts = results.map((product) => ({
+            ...product,
+            inventory: [{ quantity: product.stock ?? 0 }],
+          }));
+          setProducts(
+            activeCategory === 'all'
+              ? shapedProducts
+              : shapedProducts.filter((product) => product.categoryId === activeCategory),
+          );
+        }
+      } catch {
+        setLoadError('تعذر تنفيذ البحث الآن');
+      }
+    }, 180);
+
+    return () => window.clearTimeout(timer);
+  }, [activeCategory, branchId, isOnline, loadProducts, search, tenantId]);
+
+  const filteredProducts =
+    activeCategory === 'all'
+      ? products
+      : products.filter((product) => product.categoryId === activeCategory);
+
+  const submitQuickBarcode = async (event?: FormEvent) => {
+    event?.preventDefault();
+    const code = quickBarcode.trim();
+    if (!code) return;
+    setQuickBarcode('');
+    await handleBarcodeScanned(code);
+    searchRef.current?.focus();
+  };
 
   const handleCheckout = async (paidAmount: number) => {
     try {
-      const sale = await posStore.checkout(paidAmount, user?.tenantId || '', branchId, user!.id);
+      const sale = await posStore.checkout(paidAmount, tenantId, branchId, user!.id);
       setLastSale(sale);
       setShowPayment(false);
 
@@ -129,9 +265,13 @@ export default function POSPage() {
           invoiceNumber: sale.invoiceNumber || sale.offlineId || '',
           date: new Date().toLocaleString('ar-EG'),
           cashierName: `${user?.firstName} ${user?.lastName}`,
-          items: (sale.items || []).map((i: any) => ({
-            name: i.name, nameAr: i.nameAr, quantity: i.quantity,
-            unitPrice: i.unitPrice, total: i.total, discountAmount: i.discountAmount,
+          items: (sale.items || []).map((item: any) => ({
+            name: item.name,
+            nameAr: item.nameAr,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            total: item.total,
+            discountAmount: item.discountAmount,
           })),
           subtotal: sale.subtotal,
           discountAmount: sale.discountAmount || 0,
@@ -140,199 +280,332 @@ export default function POSPage() {
           paidAmount,
           changeAmount: sale.changeAmount || 0,
           paymentMethod: sale.paymentMethod || 'CASH',
-          currency: tenant?.currency || 'EGP',
+          currency,
           paperSize,
         });
       } else {
         setShowReceipt(true);
       }
-    } catch (err: any) {
-      toast.error(err?.message || 'فشل في إتمام عملية البيع');
+    } catch (error: any) {
+      toast.error(error?.message || 'تعذر إتمام عملية البيع');
     }
   };
 
-  const cur = tenant?.currency || 'EGP';
+  const dashboardCards = useMemo(
+    () => [
+      {
+        label: 'المنتجات المعروضة',
+        value: filteredProducts.length.toLocaleString('ar-EG'),
+        hint: activeCategory === 'all' ? 'من كل الفئات' : 'ضمن الفئة المختارة',
+        icon: Package,
+        tone: 'bg-blue-50 text-blue-600 dark:bg-blue-950',
+      },
+      {
+        label: 'عناصر السلة',
+        value: cart.length.toLocaleString('ar-EG'),
+        hint: cart.length ? 'جاهزة للدفع' : 'ابدأ بإضافة المنتجات',
+        icon: ShoppingCart,
+        tone: 'bg-brand-50 text-brand-600 dark:bg-brand-950',
+      },
+      {
+        label: 'إجمالي الفاتورة',
+        value: formatCurrency(posStore.total(), currency),
+        hint: 'يتحدث لحظيًا',
+        icon: Receipt,
+        tone: 'bg-green-50 text-green-600 dark:bg-green-950',
+      },
+    ],
+    [activeCategory, cart.length, currency, filteredProducts.length, posStore],
+  );
 
   return (
     <div className="h-screen flex flex-col lg:flex-row overflow-hidden">
-      {/* Left: Products panel */}
-      <div className="flex-1 flex flex-col bg-white dark:bg-gray-900 overflow-hidden">
-        {/* POS Top bar */}
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 dark:border-gray-800">
+      <div className="flex-1 flex flex-col overflow-hidden bg-white dark:bg-gray-900">
+        <div className="flex items-center gap-3 border-b border-gray-100 px-4 py-3 dark:border-gray-800">
           <Logo size="xs" variant="horizontal" />
-          <div className="flex-1 relative">
+
+          <div className="relative flex-1">
             <Search size={16} className="absolute start-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               ref={searchRef}
               type="text"
-              placeholder="ابحث عن منتج أو اسم... (F2 للباركود)"
-              className="w-full ps-9 pe-4 py-2 rounded-xl bg-gray-100 dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 border-0"
+              placeholder="ابحث باسم المنتج أو الباركود"
+              className="w-full rounded-2xl border-0 bg-gray-100 py-2 ps-9 pe-4 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 dark:bg-gray-800"
               value={search}
-              onChange={(e) => { setSearch(e.target.value); handleSearch(e.target.value); }}
+              onChange={(event) => setSearch(event.target.value)}
             />
           </div>
+
           <button
             onClick={() => setScanning(true)}
-            className="p-2.5 rounded-xl bg-brand-50 dark:bg-brand-950 text-brand-500 hover:bg-brand-100 transition-colors"
-            title="مسح باركود (F2)"
+            className="rounded-xl bg-brand-50 p-2.5 text-brand-500 transition-colors hover:bg-brand-100 dark:bg-brand-950"
+            title="مسح باركود"
           >
             <ScanLine size={20} />
           </button>
           <button
-            onClick={loadProducts}
-            className="p-2.5 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 transition-colors"
-            title="تحديث (F5)"
+            onClick={() => loadProducts()}
+            className="rounded-xl p-2.5 text-gray-500 transition-colors hover:bg-gray-100 dark:hover:bg-gray-800"
+            title="تحديث"
           >
-            <RefreshCw size={18} />
+            <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
           </button>
           <button
             onClick={() => router.push('/dashboard')}
-            className="p-2.5 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 transition-colors"
+            className="rounded-xl p-2.5 text-gray-500 transition-colors hover:bg-gray-100 dark:hover:bg-gray-800"
             title="لوحة التحكم"
           >
             <LayoutDashboard size={18} />
           </button>
-          <div className="flex items-center gap-1 text-xs">
+          <div className="flex items-center gap-1 text-xs text-gray-500">
             {isOnline ? <Wifi size={14} className="text-green-500" /> : <WifiOff size={14} className="text-amber-500" />}
           </div>
         </div>
 
-        {/* Category filter */}
-        <div className="flex gap-2 px-4 py-2 overflow-x-auto border-b border-gray-50 dark:border-gray-800 scrollbar-hide">
+        <div className="border-b border-gray-50 px-4 py-3 dark:border-gray-800">
+          <div className="grid gap-3 xl:grid-cols-[1.2fr,1fr]">
+            <div className="rounded-3xl border border-gray-100 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-4 text-white dark:border-gray-800">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/60">Workflow</p>
+                  <h2 className="mt-2 text-lg font-black">مسار بيع سريع وواضح</h2>
+                  <p className="mt-1 text-sm text-white/70">
+                    صفحة البيع أصبحت تعرض الخطوات الأساسية والباركود السريع من أول نظرة.
+                  </p>
+                </div>
+                <div className="rounded-2xl bg-white/10 p-3">
+                  <ScanBarcode size={22} />
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-2 md:grid-cols-2">
+                {workflowSteps.map((step) => (
+                  <div key={step.title} className="rounded-2xl bg-white/8 px-3 py-3">
+                    <p className="text-sm font-bold">{step.title}</p>
+                    <p className="mt-1 text-xs leading-5 text-white/70">{step.description}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-3xl border border-gray-100 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-bold text-gray-900 dark:text-white">باركود سريع</p>
+                  <p className="mt-1 text-xs text-gray-400">أدخل الرقم يدويًا أو استخدم ماسح USB أو الكاميرا.</p>
+                </div>
+                <button
+                  onClick={() => setScanning(true)}
+                  className="rounded-2xl bg-brand-50 p-3 text-brand-500 transition-colors hover:bg-brand-100 dark:bg-brand-950"
+                >
+                  <ScanLine size={18} />
+                </button>
+              </div>
+
+              <form onSubmit={submitQuickBarcode} className="mt-4 flex gap-2">
+                <input
+                  type="text"
+                  value={quickBarcode}
+                  onChange={(event) => setQuickBarcode(event.target.value)}
+                  placeholder="أدخل الباركود ثم اضغط Enter"
+                  className="input flex-1 text-sm font-mono"
+                  dir="ltr"
+                />
+                <button type="submit" className="btn-brand px-4 py-2.5 text-sm">
+                  إضافة
+                </button>
+              </form>
+
+              <div className="mt-4 grid gap-2 sm:grid-cols-3">
+                {dashboardCards.map((card) => {
+                  const Icon = card.icon;
+                  return (
+                    <div key={card.label} className="rounded-2xl border border-gray-100 p-3 dark:border-gray-800">
+                      <div className="flex items-center gap-2">
+                        <div className={cn('rounded-xl p-2', card.tone)}>
+                          <Icon size={16} />
+                        </div>
+                        <p className="text-xs text-gray-400">{card.label}</p>
+                      </div>
+                      <p className="mt-3 text-sm font-black text-gray-900 dark:text-white">{card.value}</p>
+                      <p className="mt-1 text-xs text-gray-400">{card.hint}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {loadError && (
+            <div className="mt-3 flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
+              <AlertTriangle size={16} className="flex-shrink-0" />
+              <span className="flex-1">{loadError}</span>
+              <button onClick={() => loadProducts()} className="font-bold text-amber-800 dark:text-amber-200">
+                إعادة التحميل
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="flex gap-2 overflow-x-auto border-b border-gray-50 px-4 py-2 scrollbar-hide dark:border-gray-800">
           <button
             onClick={() => setActiveCategory('all')}
-            className={cn('flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-semibold transition-all', activeCategory === 'all' ? 'bg-brand-500 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400')}
+            className={cn(
+              'flex-shrink-0 rounded-full px-4 py-1.5 text-sm font-semibold transition-all',
+              activeCategory === 'all'
+                ? 'bg-brand-500 text-white'
+                : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+            )}
           >
             الكل ({products.length})
           </button>
-          {categories.map((cat: any) => (
+          {categories.map((category: any) => (
             <button
-              key={cat.id}
-              onClick={() => setActiveCategory(cat.id)}
-              className={cn('flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-semibold transition-all flex items-center gap-1.5', activeCategory === cat.id ? 'bg-brand-500 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400')}
+              key={category.id}
+              onClick={() => setActiveCategory(category.id)}
+              className={cn(
+                'flex flex-shrink-0 items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-semibold transition-all',
+                activeCategory === category.id
+                  ? 'bg-brand-500 text-white'
+                  : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+              )}
             >
-              <span className="w-2 h-2 rounded-full" style={{ background: cat.color }} />
-              {cat.nameAr || cat.name}
+              <span className="h-2 w-2 rounded-full" style={{ background: category.color }} />
+              {category.nameAr || category.name}
             </button>
           ))}
         </div>
 
-        {/* Products grid */}
         <div className="flex-1 overflow-y-auto p-3">
           {loading ? (
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 xl:grid-cols-6 gap-2">
-              {Array.from({ length: 18 }).map((_, i) => (
-                <div key={i} className="aspect-square rounded-2xl bg-gray-100 dark:bg-gray-800 animate-pulse" />
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+              {Array.from({ length: 18 }).map((_, index) => (
+                <div key={index} className="aspect-[0.95] rounded-3xl bg-gray-100 animate-pulse dark:bg-gray-800" />
               ))}
             </div>
           ) : (
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 xl:grid-cols-6 gap-2">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
               {filteredProducts.map((product: any) => {
                 const stock = product.inventory?.[0]?.quantity ?? product.stock ?? 0;
-                const inCart = cart.find((i) => i.productId === product.id);
+                const inCart = cart.find((item) => item.productId === product.id);
+
                 return (
                   <button
                     key={product.id}
                     onClick={() => {
-                      if (stock <= 0) { toast.error('نفذ المخزون'); return; }
+                      if (stock <= 0) {
+                        toast.error('المنتج غير متاح في المخزون');
+                        return;
+                      }
+
                       addItem({ ...product, stock });
-                      toast.success(`+1 ${product.nameAr || product.name}`, { duration: 800, icon: '✓' });
+                      toast.success(`+1 ${product.nameAr || product.name}`, { duration: 900 });
                     }}
                     className={cn(
-                      'group relative flex flex-col items-center justify-between p-2.5 rounded-2xl border-2 transition-all duration-150 active:scale-95 text-center min-h-[100px]',
-                      stock <= 0 ? 'opacity-40 cursor-not-allowed border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900' :
-                      inCart ? 'border-brand-500 bg-brand-50 dark:bg-brand-950 shadow-md' :
-                      'border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 hover:border-brand-300 hover:shadow-md',
+                      'group relative flex min-h-[156px] flex-col justify-between rounded-3xl border-2 p-3 text-start transition-all duration-150 active:scale-[0.98]',
+                      stock <= 0
+                        ? 'cursor-not-allowed border-gray-100 bg-gray-50 opacity-50 dark:border-gray-800 dark:bg-gray-900'
+                        : inCart
+                          ? 'border-brand-500 bg-brand-50 shadow-md dark:bg-brand-950'
+                          : 'border-gray-100 bg-white hover:border-brand-300 hover:shadow-md dark:border-gray-800 dark:bg-gray-900',
                     )}
                   >
-                    {/* In-cart badge */}
                     {inCart && (
-                      <span className="absolute top-1.5 start-1.5 w-5 h-5 bg-brand-500 text-white text-xs font-bold rounded-full flex items-center justify-center">
+                      <span className="absolute start-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-brand-500 text-xs font-bold text-white">
                         {inCart.quantity}
                       </span>
                     )}
 
-                    {/* Product image or icon */}
-                    {product.image ? (
-                      <img src={product.image} alt={product.name} className="w-12 h-12 object-contain rounded-xl" />
-                    ) : (
-                      <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl"
-                        style={{ background: product.category?.color + '20' || '#f9731620' }}>
-                        <Package size={22} style={{ color: product.category?.color || '#f97316' }} />
-                      </div>
-                    )}
+                    <div className="flex items-start justify-between gap-2">
+                      {product.image ? (
+                        <img src={product.image} alt={product.name} className="h-14 w-14 rounded-2xl object-cover" />
+                      ) : (
+                        <div
+                          className="flex h-14 w-14 items-center justify-center rounded-2xl"
+                          style={{ background: `${product.category?.color || '#f97316'}20` }}
+                        >
+                          <Package size={22} style={{ color: product.category?.color || '#f97316' }} />
+                        </div>
+                      )}
 
-                    {/* Name + price */}
-                    <div className="w-full">
-                      <p className="text-xs font-semibold text-gray-800 dark:text-gray-200 leading-tight line-clamp-2">
+                      <span
+                        className={cn(
+                          'rounded-full px-2.5 py-1 text-[11px] font-bold',
+                          stock <= 0
+                            ? 'bg-red-50 text-red-600 dark:bg-red-950 dark:text-red-300'
+                            : stock <= 5
+                              ? 'bg-amber-50 text-amber-600 dark:bg-amber-950 dark:text-amber-300'
+                              : 'bg-green-50 text-green-600 dark:bg-green-950 dark:text-green-300',
+                        )}
+                      >
+                        {stock <= 0 ? 'نفد' : `المخزون ${stock}`}
+                      </span>
+                    </div>
+
+                    <div>
+                      <p className="line-clamp-2 text-sm font-bold text-gray-900 dark:text-white">
                         {product.nameAr || product.name}
                       </p>
-                      <p className="text-sm font-black text-brand-500 mt-0.5">
-                        {formatCurrency(product.price, cur)}
+                      <p className="mt-1 text-lg font-black text-brand-500">
+                        {formatCurrency(product.price, currency)}
                       </p>
-                      {stock <= 5 && stock > 0 && (
-                        <p className="text-xs text-amber-500 font-medium">باقي {stock}</p>
-                      )}
+                      <div className="mt-2 flex items-center justify-between text-[11px] text-gray-400">
+                        <span>{product.category?.nameAr || product.category?.name || 'بدون فئة'}</span>
+                        <span className="font-mono">{product.barcode || 'No barcode'}</span>
+                      </div>
                     </div>
                   </button>
                 );
               })}
 
               {filteredProducts.length === 0 && !loading && (
-                <div className="col-span-full flex flex-col items-center justify-center py-16 text-gray-400">
+                <div className="col-span-full flex flex-col items-center justify-center rounded-3xl border border-dashed border-gray-200 py-16 text-center text-gray-400 dark:border-gray-800">
                   <Package size={48} className="mb-3 opacity-40" />
-                  <p className="font-medium">لا توجد منتجات</p>
-                  <p className="text-sm mt-1">{search ? 'جرب كلمة بحث مختلفة' : 'أضف منتجاتك من لوحة التحكم'}</p>
+                  <p className="font-medium">لا توجد منتجات مطابقة</p>
+                  <p className="mt-1 text-sm">{search ? 'جرّب كلمة بحث أو باركود مختلف.' : 'أضف منتجاتك أولًا من لوحة التحكم.'}</p>
                 </div>
               )}
             </div>
           )}
         </div>
 
-        {/* Keyboard shortcuts hint */}
-        <div className="px-4 py-2 bg-gray-50 dark:bg-gray-900 border-t border-gray-100 dark:border-gray-800 flex gap-4 text-xs text-gray-400 overflow-x-auto">
-          <span>F2 = باركود</span>
-          <span>F5 = تحديث</span>
-          <span>F10 = دفع</span>
-          <span>Esc = إلغاء</span>
+        <div className="flex gap-4 overflow-x-auto border-t border-gray-100 bg-gray-50 px-4 py-2 text-xs text-gray-400 dark:border-gray-800 dark:bg-gray-900">
+          <span>F2 = ماسح باركود</span>
+          <span>F5 = تحديث المنتجات</span>
+          <span>F10 = إنهاء الدفع</span>
+          <span>Esc = إلغاء سريع</span>
         </div>
       </div>
 
-      {/* Right: Cart panel */}
       <CartPanel
-        currency={cur}
+        currency={currency}
         onCheckout={() => setShowPayment(true)}
         branchId={branchId}
-        tenantId={user?.tenantId || ''}
+        tenantId={tenantId}
       />
 
-      {/* Barcode scanner modal */}
-      {scanning && (
-        <BarcodeScanner
-          onScan={handleBarcodeScanned}
-          onClose={() => setScanning(false)}
-        />
-      )}
+      {scanning && <BarcodeScanner onScan={handleBarcodeScanned} onClose={() => setScanning(false)} />}
 
-      {/* Payment modal */}
       {showPayment && (
         <PaymentModal
           total={posStore.total()}
-          currency={cur}
+          currency={currency}
           onConfirm={handleCheckout}
           onClose={() => setShowPayment(false)}
           isProcessing={posStore.isProcessing}
         />
       )}
 
-      {/* Receipt modal */}
       {showReceipt && lastSale && (
         <ReceiptModal
           sale={lastSale}
           tenant={tenant}
           cashierName={`${user?.firstName} ${user?.lastName}`}
-          currency={cur}
-          onClose={() => { setShowReceipt(false); setLastSale(null); }}
+          currency={currency}
+          onClose={() => {
+            setShowReceipt(false);
+            setLastSale(null);
+          }}
           onPrint={() => {
             thermalPrinter.printReceipt({
               storeName: tenant?.name || '',
@@ -348,7 +621,7 @@ export default function POSPage() {
               paidAmount: lastSale.paidAmount,
               changeAmount: lastSale.changeAmount,
               paymentMethod: lastSale.paymentMethod,
-              currency: cur,
+              currency,
               paperSize,
             });
           }}

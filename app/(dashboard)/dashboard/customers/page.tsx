@@ -1,20 +1,23 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { customersApi } from '@/lib/api';
+import { resolveAppCurrency } from '@/lib/currency';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { Plus, Search, Users, Edit2, Trash2, Star, Phone } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '@/stores/auth.store';
+import { useSettingsStore } from '@/stores/settings.store';
 
 export default function CustomersPage() {
   const { tenant } = useAuthStore();
+  const { currency: settingsCurrency } = useSettingsStore();
   const [customers, setCustomers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [form, setForm] = useState({ name: '', phone: '', email: '', address: '', notes: '' });
-  const cur = tenant?.currency || 'EGP';
+  const cur = resolveAppCurrency(tenant?.currency, settingsCurrency);
 
   const load = async () => {
     setLoading(true);

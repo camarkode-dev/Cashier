@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { reportsApi } from '@/lib/api';
+import { resolveAppCurrency } from '@/lib/currency';
 import { useAuthStore } from '@/stores/auth.store';
 import { useSettingsStore } from '@/stores/settings.store';
 import { formatCurrency, formatDate } from '@/lib/utils';
@@ -20,7 +21,7 @@ interface DashStats {
 
 export default function DashboardPage() {
   const { tenant } = useAuthStore();
-  const { activeBranchId } = useSettingsStore();
+  const { activeBranchId, currency: settingsCurrency } = useSettingsStore();
   const [stats, setStats] = useState<DashStats | null>(null);
   const [chart, setChart] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -40,7 +41,7 @@ export default function DashboardPage() {
     load();
   }, [activeBranchId]);
 
-  const cur = tenant?.currency || 'EGP';
+  const cur = resolveAppCurrency(tenant?.currency, settingsCurrency);
 
   const StatCard = ({ label, value, sub, icon: Icon, color }: any) => (
     <div className="card p-5">

@@ -1,21 +1,24 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { expensesApi } from '@/lib/api';
+import { resolveAppCurrency } from '@/lib/currency';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { Plus, DollarSign, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '@/stores/auth.store';
+import { useSettingsStore } from '@/stores/settings.store';
 
 const CATEGORIES = ['إيجار', 'كهرباء', 'مياه', 'رواتب', 'نقل', 'صيانة', 'تسويق', 'أخرى'];
 
 export default function ExpensesPage() {
   const { tenant } = useAuthStore();
+  const { currency: settingsCurrency } = useSettingsStore();
   const [expenses, setExpenses] = useState<any[]>([]);
   const [summary, setSummary] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ title: '', amount: '', category: 'أخرى', notes: '', paymentMethod: 'CASH' });
-  const cur = tenant?.currency || 'EGP';
+  const cur = resolveAppCurrency(tenant?.currency, settingsCurrency);
 
   const load = async () => {
     setLoading(true);
