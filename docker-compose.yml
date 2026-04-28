@@ -33,38 +33,23 @@ services:
       timeout: 5s
       retries: 5
 
-  api:
-    build:
-      context: ./apps/api
-      dockerfile: Dockerfile
-    container_name: awlad_ayman_api
-    restart: unless-stopped
-    ports:
-      - "3001:3001"
-    environment:
-      DATABASE_URL: postgresql://postgres:password@postgres:5432/awlad_ayman_pos
-      REDIS_URL: redis://redis:6379
-      NODE_ENV: production
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    volumes:
-      - ./uploads:/app/uploads
-
   web:
     build:
-      context: ./apps/web
+      context: .
       dockerfile: Dockerfile
     container_name: awlad_ayman_web
     restart: unless-stopped
     ports:
       - "3000:3000"
     environment:
-      NEXT_PUBLIC_API_URL: http://api:3001
+      DATABASE_URL: postgresql://postgres:password@postgres:5432/awlad_ayman_pos
+      NEXT_PUBLIC_API_URL: http://localhost:3000/api
+      NODE_ENV: production
     depends_on:
-      - api
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
 volumes:
   postgres_data:
