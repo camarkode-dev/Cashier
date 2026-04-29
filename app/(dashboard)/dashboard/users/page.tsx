@@ -121,7 +121,7 @@ export default function UsersPage() {
     }
   };
 
-  const isOwner = currentUser?.role === 'OWNER';
+  const isOwner = currentUser?.role === 'OWNER' || currentUser?.role === 'ADMIN';
 
   return (
     <div className="space-y-5">

@@ -25,14 +25,14 @@ const navItems: NavItem[] = [
   { label: 'المنتجات', href: '/dashboard/products', icon: Package },
   { label: 'العملاء', href: '/dashboard/customers', icon: Users },
   { label: 'المبيعات', href: '/dashboard/sales', icon: BarChart3 },
-  { label: 'المخزون', href: '/dashboard/inventory', icon: ArrowLeftRight, roles: ['OWNER', 'MANAGER'] },
-  { label: 'الموردون', href: '/dashboard/suppliers', icon: Truck, roles: ['OWNER', 'MANAGER'] },
-  { label: 'المصروفات', href: '/dashboard/expenses', icon: DollarSign, roles: ['OWNER', 'MANAGER'] },
-  { label: 'الفروع', href: '/dashboard/branches', icon: GitBranch, roles: ['OWNER'] },
-  { label: 'المستخدمون', href: '/dashboard/users', icon: ShieldCheck, roles: ['OWNER'] },
-  { label: 'التقارير', href: '/dashboard/reports', icon: BarChart3, roles: ['OWNER', 'MANAGER'] },
+  { label: 'المخزون', href: '/dashboard/inventory', icon: ArrowLeftRight, roles: ['OWNER', 'ADMIN'] },
+  { label: 'الموردون', href: '/dashboard/suppliers', icon: Truck, roles: ['OWNER', 'ADMIN'] },
+  { label: 'المصروفات', href: '/dashboard/expenses', icon: DollarSign, roles: ['OWNER', 'ADMIN'] },
+  { label: 'الفروع', href: '/dashboard/branches', icon: GitBranch, roles: ['OWNER', 'ADMIN'] },
+  { label: 'المستخدمون', href: '/dashboard/users', icon: ShieldCheck, roles: ['OWNER', 'ADMIN'] },
+  { label: 'التقارير', href: '/dashboard/reports', icon: BarChart3, roles: ['OWNER', 'ADMIN'] },
   { label: 'الإشعارات', href: '/dashboard/notifications', icon: Bell },
-  { label: 'الإعدادات', href: '/dashboard/settings', icon: Settings, roles: ['OWNER', 'MANAGER'] },
+  { label: 'الإعدادات', href: '/dashboard/settings', icon: Settings, roles: ['OWNER', 'ADMIN'] },
 ];
 
 interface SidebarProps {

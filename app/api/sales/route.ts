@@ -173,6 +173,10 @@ export async function POST(req: NextRequest) {
         });
       }
 
+      const saleStatus = body.paymentMethod === 'CREDIT' && body.paidAmount < finalTotal
+        ? 'PARTIAL'
+        : 'COMPLETED';
+
       return tx.sale.create({
         data: {
           invoiceNumber,
@@ -180,6 +184,7 @@ export async function POST(req: NextRequest) {
           branchId: body.branchId,
           userId: dbUser.id,
           customerId: body.customerId,
+          status: saleStatus as any,
           paymentMethod: body.paymentMethod as any,
           subtotal,
           discountAmount: invoiceDisc,

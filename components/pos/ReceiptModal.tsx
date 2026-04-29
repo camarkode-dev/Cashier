@@ -90,7 +90,13 @@ export function ReceiptModal({ sale, tenant, cashierName, currency, onClose, onP
               {sale.taxAmount > 0 && <div className="flex justify-between text-gray-500"><span>الضريبة</span><span>{formatCurrency(sale.taxAmount, currency)}</span></div>}
               <div className="flex justify-between font-black text-base"><span>الإجمالي</span><span>{formatCurrency(sale.total, currency)}</span></div>
               <div className="flex justify-between"><span className="text-gray-500">المدفوع ({getPaymentMethodLabel(sale.paymentMethod)})</span><span>{formatCurrency(sale.paidAmount, currency)}</span></div>
-              {sale.changeAmount > 0 && <div className="flex justify-between text-green-600 font-bold"><span>الباقي</span><span>{formatCurrency(sale.changeAmount, currency)}</span></div>}
+              {sale.changeAmount > 0 && <div className="flex justify-between text-green-600 font-bold"><span>الباقي للعميل</span><span>{formatCurrency(sale.changeAmount, currency)}</span></div>}
+              {(sale.status === 'PARTIAL' || (sale.paymentMethod === 'CREDIT' && sale.paidAmount < sale.total)) && (
+                <div className="flex justify-between text-red-600 font-bold border-t border-dashed border-gray-300 pt-1 mt-1">
+                  <span>المتبقي على العميل</span>
+                  <span>{formatCurrency(sale.total - sale.paidAmount, currency)}</span>
+                </div>
+              )}
               {sale.loyaltyEarned > 0 && <div className="flex justify-between text-brand-500"><span>نقاط مكتسبة</span><span>+{sale.loyaltyEarned} نقطة</span></div>}
             </div>
 

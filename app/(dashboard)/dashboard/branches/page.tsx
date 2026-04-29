@@ -18,7 +18,7 @@ export default function BranchesPage() {
   const [form, setForm] = useState(emptyForm);
   const [submitting, setSubmitting] = useState(false);
 
-  const isOwner = user?.role === 'OWNER';
+  const isOwner = user?.role === 'OWNER' || user?.role === 'ADMIN';
 
   const load = async () => {
     setLoading(true);

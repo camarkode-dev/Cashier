@@ -38,9 +38,9 @@ export async function PATCH(req: NextRequest, { params }: P) {
 }
 
 export async function DELETE(_: NextRequest, { params }: P) {
-  const { dbUser } = await getAuthUser('OWNER');
+  const { dbUser } = await getAuthUser('ADMIN');
   if (!dbUser) return unauthorized();
-  if (dbUser.role !== 'OWNER') return forbidden();
+  if (dbUser.role === 'CASHIER') return forbidden();
   if (params.id === dbUser.id) return forbidden('لا يمكنك حذف حسابك الخاص');
 
   try {

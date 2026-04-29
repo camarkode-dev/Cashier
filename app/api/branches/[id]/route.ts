@@ -7,9 +7,9 @@ import { branchSchema } from '@/lib/validations';
 type P = { params: { id: string } };
 
 export async function PUT(req: NextRequest, { params }: P) {
-  const { dbUser } = await getAuthUser('OWNER');
+  const { dbUser } = await getAuthUser('ADMIN');
   if (!dbUser) return unauthorized();
-  if (dbUser.role !== 'OWNER') return forbidden();
+  if (dbUser.role === 'CASHIER') return forbidden();
   try {
     const body = branchSchema.partial().parse(await req.json());
     const branch = await prisma.branch.update({ where: { id: params.id }, data: body });
@@ -18,9 +18,9 @@ export async function PUT(req: NextRequest, { params }: P) {
 }
 
 export async function DELETE(_: NextRequest, { params }: P) {
-  const { dbUser } = await getAuthUser('OWNER');
+  const { dbUser } = await getAuthUser('ADMIN');
   if (!dbUser) return unauthorized();
-  if (dbUser.role !== 'OWNER') return forbidden();
+  if (dbUser.role === 'CASHIER') return forbidden();
   try {
     const branch = await prisma.branch.findUnique({ where: { id: params.id } });
     if (branch?.isMain) return handleError(new Error('Cannot delete main branch'));

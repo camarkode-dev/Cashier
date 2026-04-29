@@ -16,9 +16,9 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const { dbUser } = await getAuthUser('OWNER');
+  const { dbUser } = await getAuthUser('ADMIN');
   if (!dbUser) return unauthorized();
-  if (dbUser.role !== 'OWNER') return forbidden();
+  if (dbUser.role === 'CASHIER') return forbidden();
   try {
     const body = branchSchema.parse(await req.json());
     const branch = await prisma.$transaction(async (tx) => {
