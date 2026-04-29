@@ -260,10 +260,51 @@ export default function POSPage() {
     return () => window.clearTimeout(timer);
   }, [activeCategory, branchId, isOnline, loadProducts, search, tenantId, user?.id]);
 
-  const filteredProducts =
-    activeCategory === 'all'
-      ? products
-      : products.filter((product) => product.categoryId === activeCategory);
+  const filteredProducts = useMemo(() => {
+    let filtered = products;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      filtered = filtered.filter(
+        (p: any) =>
+          p.name?.toLowerCase().includes(q) ||
+          p.nameAr?.toLowerCase().includes(q) ||
+          p.barcode?.toLowerCase().includes(q) ||
+          p.sku?.toLowerCase().includes(q),
+      );
+    }
+    if (activeCategory !== 'all') {
+      filtered = filtered.filter((p: any) => p.categoryId === activeCategory);
+    }
+    return filtered;
+  }, [products, search, activeCategory]);
+
+  const handleSearchKeyDown = useCallback(
+    async (event: React.KeyboardEvent<HTMLInputElement>) => {
+      if (event.key !== 'Enter') return;
+      event.preventDefault();
+      const q = search.trim();
+      if (!q) return;
+
+      if (filteredProducts.length === 1) {
+        const product = filteredProducts[0];
+        const stock = product.inventory?.[0]?.quantity ?? product.stock ?? 0;
+        if (stock <= 0) {
+          toast.error('المنتج غير متاح في المخزون');
+          return;
+        }
+        addItem({ ...product, stock });
+        toast.success(`+1 ${product.nameAr || product.name}`, { duration: 900 });
+        setSearch('');
+        return;
+      }
+
+      if (filteredProducts.length === 0) {
+        await handleBarcodeScanned(q);
+        setSearch('');
+      }
+    },
+    [filteredProducts, search, addItem, handleBarcodeScanned],
+  );
 
   const submitQuickBarcode = async (event?: FormEvent) => {
     event?.preventDefault();
@@ -373,6 +414,7 @@ export default function POSPage() {
               className="w-full rounded-2xl border-0 bg-gray-100 py-2 ps-9 pe-4 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 dark:bg-gray-800"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
+              onKeyDown={handleSearchKeyDown}
             />
           </div>
 

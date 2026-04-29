@@ -78,9 +78,20 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   if (dbUser.role !== 'OWNER') return forbidden();
 
   try {
-    await prisma.product.update({ where: { id: params.id }, data: { isActive: false } });
-    await audit(dbUser.id, 'DELETE', 'product', params.id);
-    return ok({ message: 'تم حذف المنتج' });
+    const [saleItemCount, transferItemCount] = await Promise.all([
+      prisma.saleItem.count({ where: { productId: params.id } }),
+      prisma.stockTransferItem.count({ where: { productId: params.id } }),
+    ]);
+
+    if (saleItemCount > 0 || transferItemCount > 0) {
+      await prisma.product.update({ where: { id: params.id }, data: { isActive: false } });
+      await audit(dbUser.id, 'DELETE', 'product', params.id, { archived: true });
+      return ok({ message: 'تم أرشفة المنتج (له سجل مبيعات لا يمكن حذفه نهائياً)' });
+    }
+
+    await prisma.product.delete({ where: { id: params.id } });
+    await audit(dbUser.id, 'DELETE', 'product', params.id, { archived: false });
+    return ok({ message: 'تم حذف المنتج نهائياً' });
   } catch (e) {
     return handleError(e);
   }
