@@ -19,13 +19,8 @@ const tabs = [
   { id: 'language', label: 'اللغة', icon: Globe },
   { id: 'security', label: 'الأمان', icon: Save },
 ] as const;
-
-
-
 export default function SettingsPage() {
   const { tenant, updateTenant } = useAuthStore();
-
-  // State for password change
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
