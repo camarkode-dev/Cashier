@@ -59,152 +59,149 @@ export default function ReportsPage() {
 
   const exportPdf = async () => {
     setExporting(true);
-    const { from, to } = getDateRange();
-    const summary = profit?.summary || {};
-    const storeName = tenant?.nameAr || tenant?.name || 'نقطة البيع';
-
-    // Build Arabic styled HTML div
-    const div = document.createElement('div');
-    div.style.cssText = [
-      'position:absolute',
-      'left:-9999px',
-      'top:0',
-      'width:794px',
-      'background:#ffffff',
-      'padding:40px 44px',
-      'font-family:Cairo,Arial,sans-serif',
-      'direction:rtl',
-      'text-align:right',
-      'color:#111827',
-      'line-height:1.5',
-    ].join(';');
-
-    const fmt = (n: number) => n.toLocaleString('ar-EG', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-    div.innerHTML = `
-      <!-- Header -->
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #f97316;padding-bottom:18px;margin-bottom:24px;">
-        <div>
-          <h1 style="font-size:24px;font-weight:900;color:#f97316;margin:0 0 4px">${storeName}</h1>
-          <h2 style="font-size:16px;font-weight:700;color:#374151;margin:0">تقرير الأرباح والمبيعات</h2>
-          <p style="color:#6b7280;font-size:12px;margin:4px 0 0">الفترة من <strong>${from}</strong> إلى <strong>${to}</strong></p>
-        </div>
-        <div style="text-align:left;color:#9ca3af;font-size:11px;padding-top:4px;">
-          <p style="margin:0">تاريخ الإنشاء</p>
-          <p style="margin:2px 0 0;font-weight:700;color:#374151">${new Date().toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
-        </div>
-      </div>
-
-      <!-- Summary cards -->
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:28px;">
-        <div style="background:#fff7ed;border-radius:14px;padding:18px 16px;border:1px solid #fed7aa;">
-          <p style="color:#ea580c;font-size:11px;font-weight:600;margin:0 0 8px;text-transform:uppercase;letter-spacing:.04em">الإيرادات</p>
-          <p style="font-size:19px;font-weight:900;color:#c2410c;margin:0">${fmt(summary.revenue || 0)}</p>
-          <p style="font-size:11px;color:#fb923c;margin:4px 0 0">${cur}</p>
-        </div>
-        <div style="background:#f0fdf4;border-radius:14px;padding:18px 16px;border:1px solid #bbf7d0;">
-          <p style="color:#16a34a;font-size:11px;font-weight:600;margin:0 0 8px;text-transform:uppercase;letter-spacing:.04em">صافي الربح</p>
-          <p style="font-size:19px;font-weight:900;color:#15803d;margin:0">${fmt(summary.profit || 0)}</p>
-          <p style="font-size:11px;color:#4ade80;margin:4px 0 0">${cur}</p>
-        </div>
-        <div style="background:#eff6ff;border-radius:14px;padding:18px 16px;border:1px solid #bfdbfe;">
-          <p style="color:#2563eb;font-size:11px;font-weight:600;margin:0 0 8px;text-transform:uppercase;letter-spacing:.04em">عدد الفواتير</p>
-          <p style="font-size:19px;font-weight:900;color:#1d4ed8;margin:0">${(summary.salesCount || 0).toLocaleString('ar-EG')}</p>
-          <p style="font-size:11px;color:#60a5fa;margin:4px 0 0">فاتورة</p>
-        </div>
-        <div style="background:#faf5ff;border-radius:14px;padding:18px 16px;border:1px solid #e9d5ff;">
-          <p style="color:#7c3aed;font-size:11px;font-weight:600;margin:0 0 8px;text-transform:uppercase;letter-spacing:.04em">هامش الربح</p>
-          <p style="font-size:19px;font-weight:900;color:#6d28d9;margin:0">${(summary.profitMargin || 0).toFixed(1)}%</p>
-          <p style="font-size:11px;color:#a78bfa;margin:4px 0 0">نسبة مئوية</p>
-        </div>
-      </div>
-
-      <!-- Secondary stats -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:28px;">
-        <div style="background:#f9fafb;border-radius:12px;padding:14px 16px;border:1px solid #e5e7eb;">
-          <p style="color:#6b7280;font-size:12px;margin:0 0 4px">إجمالي الخصومات</p>
-          <p style="font-weight:800;font-size:16px;color:#111827;margin:0">${fmt(summary.discount || 0)} ${cur}</p>
-        </div>
-        <div style="background:#f9fafb;border-radius:12px;padding:14px 16px;border:1px solid #e5e7eb;">
-          <p style="color:#6b7280;font-size:12px;margin:0 0 4px">إجمالي الضرائب</p>
-          <p style="font-weight:800;font-size:16px;color:#111827;margin:0">${fmt(summary.tax || 0)} ${cur}</p>
-        </div>
-      </div>
-
-      ${topProducts.length > 0 ? `
-      <!-- Top products table -->
-      <div>
-        <h3 style="font-size:15px;font-weight:800;margin:0 0 14px;color:#111827;padding-bottom:10px;border-bottom:2px solid #f3f4f6;">
-          أفضل المنتجات مبيعاً
-        </h3>
-        <table style="width:100%;border-collapse:collapse;font-size:13px;">
-          <thead>
-            <tr style="background:#f9fafb;">
-              <th style="padding:11px 14px;text-align:right;font-weight:700;color:#374151;border-bottom:2px solid #e5e7eb;width:40px">#</th>
-              <th style="padding:11px 14px;text-align:right;font-weight:700;color:#374151;border-bottom:2px solid #e5e7eb;">المنتج</th>
-              <th style="padding:11px 14px;text-align:right;font-weight:700;color:#374151;border-bottom:2px solid #e5e7eb;">الكمية المباعة</th>
-              <th style="padding:11px 14px;text-align:right;font-weight:700;color:#374151;border-bottom:2px solid #e5e7eb;">الإيرادات</th>
-              <th style="padding:11px 14px;text-align:right;font-weight:700;color:#374151;border-bottom:2px solid #e5e7eb;">الربح</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${topProducts.map((p, i) => `
-            <tr style="border-bottom:1px solid #f3f4f6;${i % 2 === 1 ? 'background:#fafafa;' : ''}">
-              <td style="padding:10px 14px;color:#9ca3af;font-weight:700;">${i + 1}</td>
-              <td style="padding:10px 14px;font-weight:600;color:#111827;">${p.nameAr || p.name}</td>
-              <td style="padding:10px 14px;color:#374151;">${(p.quantity || 0).toLocaleString('ar-EG')} وحدة</td>
-              <td style="padding:10px 14px;font-weight:700;color:#f97316;">${fmt(p.revenue || 0)} ${cur}</td>
-              <td style="padding:10px 14px;font-weight:700;color:#22c55e;">${fmt(p.profit || 0)} ${cur}</td>
-            </tr>`).join('')}
-          </tbody>
-        </table>
-      </div>
-      ` : ''}
-
-      <!-- Footer -->
-      <div style="margin-top:32px;padding-top:14px;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;color:#9ca3af;font-size:11px;">
-        <span>نقطة البيع الذكية — تقرير آلي</span>
-        <span>${storeName}</span>
-      </div>
-    `;
-
-    document.body.appendChild(div);
-
     try {
-      const html2canvas = (await import('html2canvas')).default;
-      const canvas = await html2canvas(div, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: '#ffffff',
-        logging: false,
-      });
-      document.body.removeChild(div);
+      const { from, to } = getDateRange();
+      const summary = profit?.summary || {};
+      const storeName = tenant?.nameAr || tenant?.name || 'نقطة البيع';
+      const fmt = (n: number) => n.toLocaleString('ar-EG', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const createdAt = new Date().toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' });
 
-      const { jsPDF } = await import('jspdf');
-      const pageW = 210;
-      const pageH = 297;
-      const imgW = pageW;
-      const imgH = (canvas.height * imgW) / canvas.width;
+      const topRows = topProducts.map((p, i) => `
+        <tr style="border-bottom:1px solid #f3f4f6;${i % 2 === 1 ? 'background:#fafafa;' : ''}">
+          <td style="padding:10px 14px;color:#9ca3af;font-weight:700;text-align:center;">${i + 1}</td>
+          <td style="padding:10px 14px;font-weight:600;color:#111827;">${p.nameAr || p.name}</td>
+          <td style="padding:10px 14px;color:#374151;text-align:center;">${(p.quantity || 0).toLocaleString('ar-EG')} وحدة</td>
+          <td style="padding:10px 14px;font-weight:700;color:#f97316;text-align:center;">${fmt(p.revenue || 0)} ${cur}</td>
+          <td style="padding:10px 14px;font-weight:700;color:#22c55e;text-align:center;">${fmt(p.profit || 0)} ${cur}</td>
+        </tr>`).join('');
 
-      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-      const imgData = canvas.toDataURL('image/png', 1.0);
+      const html = `<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>تقرير ${from} — ${to}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Cairo', 'Arial Unicode MS', Arial, sans-serif;
+      direction: rtl;
+      text-align: right;
+      color: #111827;
+      line-height: 1.6;
+      background: #fff;
+      padding: 40px 44px;
+      max-width: 820px;
+      margin: 0 auto;
+    }
+    h1, h2, h3, p, span, td, th { font-family: 'Cairo', 'Arial Unicode MS', Arial, sans-serif; }
+    table { border-collapse: collapse; width: 100%; }
+    @media print {
+      @page { size: A4; margin: 12mm 10mm; }
+      body { padding: 0; max-width: none; }
+      .no-print { display: none !important; }
+    }
+  </style>
+</head>
+<body>
 
-      if (imgH <= pageH) {
-        doc.addImage(imgData, 'PNG', 0, 0, imgW, imgH);
-      } else {
-        let yOffset = 0;
-        let remaining = imgH;
-        while (remaining > 0) {
-          if (yOffset > 0) doc.addPage();
-          doc.addImage(imgData, 'PNG', 0, -yOffset, imgW, imgH);
-          yOffset += pageH;
-          remaining -= pageH;
-        }
+  <!-- Header -->
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #f97316;padding-bottom:18px;margin-bottom:24px;">
+    <div>
+      <h1 style="font-size:24px;font-weight:900;color:#f97316;margin:0 0 4px">${storeName}</h1>
+      <h2 style="font-size:16px;font-weight:700;color:#374151;margin:0">تقرير الأرباح والمبيعات</h2>
+      <p style="color:#6b7280;font-size:12px;margin:6px 0 0">الفترة من <strong>${from}</strong> إلى <strong>${to}</strong></p>
+    </div>
+    <div style="text-align:left;color:#9ca3af;font-size:11px;padding-top:4px;">
+      <p style="margin:0">تاريخ الإنشاء</p>
+      <p style="margin:4px 0 0;font-weight:700;color:#374151">${createdAt}</p>
+    </div>
+  </div>
+
+  <!-- Summary cards -->
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:28px;">
+    <div style="background:#fff7ed;border-radius:14px;padding:18px 16px;border:1px solid #fed7aa;">
+      <p style="color:#ea580c;font-size:11px;font-weight:600;margin:0 0 8px;">الإيرادات</p>
+      <p style="font-size:20px;font-weight:900;color:#c2410c;margin:0">${fmt(summary.revenue || 0)}</p>
+      <p style="font-size:11px;color:#fb923c;margin:4px 0 0">${cur}</p>
+    </div>
+    <div style="background:#f0fdf4;border-radius:14px;padding:18px 16px;border:1px solid #bbf7d0;">
+      <p style="color:#16a34a;font-size:11px;font-weight:600;margin:0 0 8px;">صافي الربح</p>
+      <p style="font-size:20px;font-weight:900;color:#15803d;margin:0">${fmt(summary.profit || 0)}</p>
+      <p style="font-size:11px;color:#4ade80;margin:4px 0 0">${cur}</p>
+    </div>
+    <div style="background:#eff6ff;border-radius:14px;padding:18px 16px;border:1px solid #bfdbfe;">
+      <p style="color:#2563eb;font-size:11px;font-weight:600;margin:0 0 8px;">عدد الفواتير</p>
+      <p style="font-size:20px;font-weight:900;color:#1d4ed8;margin:0">${(summary.salesCount || 0).toLocaleString('ar-EG')}</p>
+      <p style="font-size:11px;color:#60a5fa;margin:4px 0 0">فاتورة</p>
+    </div>
+    <div style="background:#faf5ff;border-radius:14px;padding:18px 16px;border:1px solid #e9d5ff;">
+      <p style="color:#7c3aed;font-size:11px;font-weight:600;margin:0 0 8px;">هامش الربح</p>
+      <p style="font-size:20px;font-weight:900;color:#6d28d9;margin:0">${(summary.profitMargin || 0).toFixed(1)}%</p>
+      <p style="font-size:11px;color:#a78bfa;margin:4px 0 0">نسبة مئوية</p>
+    </div>
+  </div>
+
+  <!-- Secondary stats -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:28px;">
+    <div style="background:#f9fafb;border-radius:12px;padding:14px 16px;border:1px solid #e5e7eb;">
+      <p style="color:#6b7280;font-size:12px;margin:0 0 4px">إجمالي الخصومات</p>
+      <p style="font-weight:800;font-size:16px;color:#111827;margin:0">${fmt(summary.discount || 0)} ${cur}</p>
+    </div>
+    <div style="background:#f9fafb;border-radius:12px;padding:14px 16px;border:1px solid #e5e7eb;">
+      <p style="color:#6b7280;font-size:12px;margin:0 0 4px">إجمالي الضرائب</p>
+      <p style="font-weight:800;font-size:16px;color:#111827;margin:0">${fmt(summary.tax || 0)} ${cur}</p>
+    </div>
+  </div>
+
+  ${topProducts.length > 0 ? `
+  <!-- Top products table -->
+  <div style="margin-bottom:28px;">
+    <h3 style="font-size:15px;font-weight:800;margin:0 0 14px;color:#111827;padding-bottom:10px;border-bottom:2px solid #f3f4f6;">
+      أفضل المنتجات مبيعاً
+    </h3>
+    <table>
+      <thead>
+        <tr style="background:#f9fafb;">
+          <th style="padding:11px 14px;text-align:center;font-weight:700;color:#374151;border-bottom:2px solid #e5e7eb;width:40px">#</th>
+          <th style="padding:11px 14px;text-align:right;font-weight:700;color:#374151;border-bottom:2px solid #e5e7eb;">المنتج</th>
+          <th style="padding:11px 14px;text-align:center;font-weight:700;color:#374151;border-bottom:2px solid #e5e7eb;">الكمية</th>
+          <th style="padding:11px 14px;text-align:center;font-weight:700;color:#374151;border-bottom:2px solid #e5e7eb;">الإيرادات</th>
+          <th style="padding:11px 14px;text-align:center;font-weight:700;color:#374151;border-bottom:2px solid #e5e7eb;">الربح</th>
+        </tr>
+      </thead>
+      <tbody>${topRows}</tbody>
+    </table>
+  </div>` : ''}
+
+  <!-- Footer -->
+  <div style="margin-top:32px;padding-top:14px;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;color:#9ca3af;font-size:11px;">
+    <span>نقطة البيع الذكية — تقرير آلي</span>
+    <span>${storeName}</span>
+  </div>
+
+  <script>
+    // Auto-print after Cairo font is loaded
+    document.fonts.ready.then(function() {
+      setTimeout(function() { window.print(); }, 400);
+    });
+    window.addEventListener('afterprint', function() { window.close(); });
+  </script>
+</body>
+</html>`;
+
+      const win = window.open('', '_blank', 'width=1000,height=750');
+      if (!win) {
+        alert('يرجى السماح بفتح النوافذ المنبثقة في متصفحك ثم أعد المحاولة');
+        return;
       }
-
-      doc.save(`تقرير-${from}-${to}.pdf`);
+      win.document.write(html);
+      win.document.close();
     } catch {
-      if (document.body.contains(div)) document.body.removeChild(div);
+      // silent
     } finally {
       setExporting(false);
     }
