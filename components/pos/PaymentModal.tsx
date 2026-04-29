@@ -286,7 +286,7 @@ export function PaymentModal({ total, currency, onConfirm, onClose, isProcessing
 
           {/* Confirm button */}
           <button
-            onClick={() => onConfirm(paymentMethod === 'CREDIT' ? total : paidNum, buildExtraNotes())}
+            onClick={() => onConfirm(paidNum, buildExtraNotes())}
             disabled={!canConfirm}
             className="w-full btn-brand py-4 text-lg rounded-2xl flex items-center justify-center gap-2 font-black disabled:opacity-50 disabled:cursor-not-allowed"
           >
