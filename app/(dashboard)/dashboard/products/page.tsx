@@ -20,6 +20,7 @@ const emptyForm = {
   minStock: '5',
   taxRate: '',
   initialStock: '0',
+  returnDays: '7',
 };
 
 export default function ProductsPage() {
@@ -103,6 +104,7 @@ export default function ProductsPage() {
       minStock: parseInt(form.minStock || '5'),
       taxRate: form.taxRate ? parseFloat(form.taxRate) : undefined,
       initialStock: parseInt(form.initialStock || '0'),
+      returnDays: parseInt(form.returnDays || '7'),
       branchId: activeBranchId || undefined,
     };
 
@@ -164,6 +166,7 @@ export default function ProductsPage() {
       minStock: (product.minStock ?? product.inventory?.[0]?.minStock ?? 5).toString(),
       taxRate: product.taxRate?.toString() || '',
       initialStock: (product.inventory?.[0]?.quantity ?? 0).toString(),
+      returnDays: (product.returnDays ?? 7).toString(),
     });
     setShowNewCategoryInput(false);
     setNewCategoryName('');
@@ -395,6 +398,27 @@ export default function ProductsPage() {
                 <div>
                   <label className="label">الضريبة %</label>
                   <input className="input" type="number" min="0" step="0.01" value={form.taxRate} onChange={(e) => setForm((f) => ({ ...f, taxRate: e.target.value }))} dir="ltr" />
+                </div>
+              </div>
+
+              <div>
+                <label className="label">سياسة الاسترجاع</label>
+                <div className="flex gap-2 mt-1">
+                  {[{ v: '7', label: '٧ أيام' }, { v: '14', label: '١٤ يوماً' }, { v: '0', label: 'لا يُسترجع' }].map(({ v, label }) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => setForm((f) => ({ ...f, returnDays: v }))}
+                      className={cn(
+                        'flex-1 py-2 rounded-xl text-xs font-semibold border-2 transition-all',
+                        form.returnDays === v
+                          ? 'border-brand-500 bg-brand-50 dark:bg-brand-950 text-brand-600'
+                          : 'border-gray-100 dark:border-gray-700 text-gray-500',
+                      )}
+                    >
+                      {label}
+                    </button>
+                  ))}
                 </div>
               </div>
 

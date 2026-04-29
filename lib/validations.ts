@@ -28,6 +28,7 @@ export const productSchema = z.object({
   description: optionalTrimmedString,
   isActive: z.boolean().default(true),
   minStock: z.number().int().nonnegative().default(5),
+  returnDays: z.number().int().nonnegative().default(7),
   initialStock: z.number().int().nonnegative().default(0),
   branchId: optionalTrimmedString,
 });

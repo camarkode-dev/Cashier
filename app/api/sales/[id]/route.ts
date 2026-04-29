@@ -1,7 +1,7 @@
 export const dynamic = 'force-dynamic';
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getAuthUser, ok, unauthorized, forbidden, notFound, handleError, audit } from '@/lib/api-utils';
+import { getAuthUser, ok, err, unauthorized, forbidden, notFound, handleError, audit } from '@/lib/api-utils';
 
 type Params = { params: { id: string } };
 
@@ -28,30 +28,35 @@ export async function GET(_req: NextRequest, { params }: Params) {
 }
 
 export async function PATCH(req: NextRequest, { params }: Params) {
-  const { dbUser } = await getAuthUser('ADMIN');
-  if (!dbUser) return unauthorized();
-
-  const { action } = await req.json();
-
-  if (action !== 'refund' && action !== 'void') {
-    return handleError(new Error('Invalid action'));
-  }
-
   try {
+    const { dbUser } = await getAuthUser('ADMIN');
+    if (!dbUser) return unauthorized();
+
+    const body = await req.json();
+    const { action, reason, customerPhone } = body;
+
+    if (action !== 'refund' && action !== 'void') {
+      return err('إجراء غير صالح', 400);
+    }
+
     const sale = await prisma.sale.findUnique({
       where: { id: params.id },
-      include: { items: true },
+      include: { items: true, customer: true, user: true, branch: true },
     });
 
     if (!sale) return notFound('Sale');
     if (sale.status !== 'COMPLETED') {
-      return handleError(new Error('Sale is not in COMPLETED status'));
+      return err('لا يمكن إجراء هذا الإجراء — الفاتورة ليست مكتملة', 409);
     }
 
     const newStatus = action === 'refund' ? 'REFUNDED' : 'VOID';
 
+    const refundNote = action === 'refund'
+      ? [reason ? `سبب الاسترجاع: ${reason}` : null, customerPhone ? `هاتف العميل: ${customerPhone}` : null].filter(Boolean).join(' | ')
+      : null;
+    const updatedNotes = [refundNote, sale.notes].filter(Boolean).join('\n') || (sale.notes ?? undefined);
+
     const updated = await prisma.$transaction(async (tx) => {
-      // Restore inventory on refund
       if (action === 'refund') {
         for (const item of sale.items) {
           await tx.inventory.updateMany({
@@ -60,28 +65,31 @@ export async function PATCH(req: NextRequest, { params }: Params) {
           });
         }
 
-        // Reverse loyalty points
         if (sale.customerId) {
-          await tx.customer.update({
-            where: { id: sale.customerId },
-            data: {
-              loyaltyPoints: { decrement: Math.floor(sale.total / 10) },
-              totalSpent: { decrement: sale.total },
-            },
-          });
+          const currentCustomer = await tx.customer.findUnique({ where: { id: sale.customerId }, select: { loyaltyPoints: true, totalSpent: true } });
+          if (currentCustomer) {
+            await tx.customer.update({
+              where: { id: sale.customerId },
+              data: {
+                loyaltyPoints: { decrement: Math.min(currentCustomer.loyaltyPoints, Math.floor(sale.total / 10)) },
+                totalSpent: { decrement: Math.min(currentCustomer.totalSpent, sale.total) },
+              },
+            });
+          }
         }
       }
 
       return tx.sale.update({
         where: { id: params.id },
-        data: { status: newStatus },
-        include: { items: true },
+        data: { status: newStatus, ...(updatedNotes !== undefined && { notes: updatedNotes }) },
+        include: { items: true, customer: true, user: true, branch: true },
       });
     });
 
     await audit(dbUser.id, action.toUpperCase(), 'sale', params.id);
     return ok(updated);
-  } catch (e) {
+  } catch (e: any) {
+    console.error('[PATCH /api/sales/:id] error:', e?.message ?? e);
     return handleError(e);
   }
 }

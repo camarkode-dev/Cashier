@@ -6,9 +6,9 @@ import { useAuthStore } from '@/stores/auth.store';
 import { useSettingsStore } from '@/stores/settings.store';
 import { cn } from '@/lib/utils';
 import {
-  LayoutDashboard, ShoppingCart, Package, Users, BarChart3,
+  LayoutDashboard, ShoppingCart, Package, Users,
   Settings, Truck, DollarSign, GitBranch, Bell, ShieldCheck,
-  LogOut, ChevronRight, ArrowLeftRight,
+  LogOut, ChevronRight, ArrowLeftRight, ReceiptText, TrendingUp, Tag,
 } from 'lucide-react';
 
 interface NavItem {
@@ -23,14 +23,15 @@ const navItems: NavItem[] = [
   { label: 'لوحة التحكم', href: '/dashboard', icon: LayoutDashboard },
   { label: 'نقطة البيع', href: '/pos', icon: ShoppingCart },
   { label: 'المنتجات', href: '/dashboard/products', icon: Package },
+  { label: 'الفئات', href: '/dashboard/categories', icon: Tag, roles: ['OWNER', 'ADMIN'] },
   { label: 'العملاء', href: '/dashboard/customers', icon: Users },
-  { label: 'المبيعات', href: '/dashboard/sales', icon: BarChart3 },
+  { label: 'المبيعات', href: '/dashboard/sales', icon: ReceiptText },
   { label: 'المخزون', href: '/dashboard/inventory', icon: ArrowLeftRight, roles: ['OWNER', 'ADMIN'] },
   { label: 'الموردون', href: '/dashboard/suppliers', icon: Truck, roles: ['OWNER', 'ADMIN'] },
   { label: 'المصروفات', href: '/dashboard/expenses', icon: DollarSign, roles: ['OWNER', 'ADMIN'] },
   { label: 'الفروع', href: '/dashboard/branches', icon: GitBranch, roles: ['OWNER', 'ADMIN'] },
   { label: 'المستخدمون', href: '/dashboard/users', icon: ShieldCheck, roles: ['OWNER', 'ADMIN'] },
-  { label: 'التقارير', href: '/dashboard/reports', icon: BarChart3, roles: ['OWNER', 'ADMIN'] },
+  { label: 'التقارير', href: '/dashboard/reports', icon: TrendingUp, roles: ['OWNER', 'ADMIN'] },
   { label: 'الإشعارات', href: '/dashboard/notifications', icon: Bell },
   { label: 'الإعدادات', href: '/dashboard/settings', icon: Settings, roles: ['OWNER', 'ADMIN'] },
 ];

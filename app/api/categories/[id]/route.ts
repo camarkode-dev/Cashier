@@ -18,9 +18,9 @@ export async function PUT(req: NextRequest, { params }: P) {
 }
 
 export async function DELETE(_: NextRequest, { params }: P) {
-  const { dbUser } = await getAuthUser('OWNER');
+  const { dbUser } = await getAuthUser('ADMIN');
   if (!dbUser) return unauthorized();
-  if (dbUser.role !== 'OWNER') return forbidden();
+  if (dbUser.role === 'CASHIER') return forbidden();
   try {
     await prisma.category.delete({ where: { id: params.id } });
     return ok({ message: 'Deleted' });

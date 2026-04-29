@@ -20,11 +20,15 @@ export interface ReceiptData {
   changeAmount: number;
   paymentMethod: string;
   customerName?: string;
+  customerPhone?: string;
   loyaltyPoints?: number;
   qrData?: string;
   footer?: string;
   paperSize?: '58mm' | '80mm';
   currency?: string;
+  isRefund?: boolean;
+  refundReason?: string;
+  remainingAmount?: number;
 }
 
 export interface ReceiptItem {
@@ -34,6 +38,7 @@ export interface ReceiptItem {
   unitPrice: number;
   total: number;
   discountAmount?: number;
+  returnDays?: number;
 }
 
 export interface PrinterPreferences {
@@ -143,6 +148,13 @@ export class ThermalPrinter {
     if (data.storePhone) pos.align('center').line('هاتف: ' + data.storePhone);
     pos.divider('=', width);
 
+    // Refund banner
+    if (data.isRefund) {
+      pos.align('center').bold(true).size(2, 1).line('*** فاتورة استرجاع ***');
+      pos.bold(false).size(1, 1);
+      pos.divider('=', width);
+    }
+
     // Invoice info
     pos.align('right').bold(false);
     pos.line('رقم الفاتورة: ' + data.invoiceNumber);
@@ -150,6 +162,7 @@ export class ThermalPrinter {
     pos.line('الكاشير: ' + data.cashierName);
     if (data.branchName) pos.line('الفرع: ' + data.branchName);
     if (data.customerName) pos.line('العميل: ' + data.customerName);
+    if (data.customerPhone) pos.line('هاتف العميل: ' + data.customerPhone);
     pos.divider('-', width);
 
     // Items
@@ -184,8 +197,33 @@ export class ThermalPrinter {
     // Loyalty
     if (data.loyaltyPoints) pos.line(`نقاط الولاء: ${data.loyaltyPoints} نقطة`);
 
+    // Refund reason
+    if (data.isRefund && data.refundReason) {
+      pos.divider('-', width);
+      pos.align('right').bold(true).line('سبب الاسترجاع:');
+      pos.bold(false).line(data.refundReason);
+    }
+
+    // Return policy (skip for refund receipts)
+    if (!data.isRefund) {
+      const groups = new Map<number, string[]>();
+      for (const item of data.items) {
+        const days = item.returnDays ?? 7;
+        if (!groups.has(days)) groups.set(days, []);
+        groups.get(days)!.push(item.nameAr || item.name);
+      }
+      if (groups.size > 0) {
+        pos.divider('-', width);
+        pos.align('right').bold(true).line('سياسة الاسترجاع:');
+        pos.bold(false);
+        for (const [days, names] of Array.from(groups.entries()).sort((a, b) => a[0] - b[0])) {
+          pos.line(`${days} أيام: ${names.join('، ')}`);
+        }
+      }
+    }
+
     pos.divider('=', width);
-    pos.align('center').line('شكراً لتسوقكم معنا');
+    pos.align('center').line(data.isRefund ? 'تم الاسترجاع بنجاح' : 'شكراً لتسوقكم معنا');
     if (data.footer) pos.line(data.footer);
 
     // Barcode (invoice number as text barcode representation)
@@ -205,6 +243,24 @@ export class ThermalPrinter {
   private printViaBrowser(data: ReceiptData) {
     const width = data.paperSize === '80mm' ? '80mm' : '58mm';
     const cur = data.currency || 'EGP';
+
+    // Build return policy block — group items by returnDays, skip for refund receipts
+    const toAr = (n: number) => n.toString().replace(/\d/g, (d) => '٠١٢٣٤٥٦٧٨٩'[+d]);
+    const returnPolicyHtml = (() => {
+      if (data.isRefund) return '';
+      const groups = new Map<number, string[]>();
+      for (const item of data.items) {
+        const days = item.returnDays ?? 7;
+        if (!groups.has(days)) groups.set(days, []);
+        groups.get(days)!.push(item.nameAr || item.name);
+      }
+      if (groups.size === 0) return '';
+      const sorted = Array.from(groups.entries()).sort((a, b) => a[0] - b[0]);
+      const rows = sorted.map(([days, names]) =>
+        `<div class="rp-row"><span class="rp-badge rp-d${days}">${toAr(days)} يوم</span><span class="rp-names">${names.join(' · ')}</span></div>`
+      ).join('');
+      return `<div class="return-policy"><div class="rp-title">↩ سياسة الاسترجاع</div>${rows}</div>`;
+    })();
 
     const headerLogoSvg = `<svg width="52" height="52" viewBox="0 0 320 320" fill="none" xmlns="http://www.w3.org/2000/svg">
       <circle cx="160" cy="160" r="160" fill="#000"/>
@@ -251,6 +307,16 @@ export class ThermalPrinter {
         .store-name { font-size: 17px; font-weight: 900; letter-spacing: -0.3px; }
         .store-sub { font-size: 11px; color: #333; }
         .payment-badge { display: inline-block; border: 1px solid #000; border-radius: 4px; padding: 1px 8px; font-size: 11px; font-weight: 700; margin-top: 3px; }
+        .refund-banner { background: #000; color: #fff; text-align: center; font-size: 14px; font-weight: 900; padding: 5px 0; margin: 6px 0; letter-spacing: 1px; }
+        .refund-reason { border: 1px dashed #000; border-radius: 4px; padding: 5px 8px; margin-top: 6px; font-size: 11px; }
+        .refund-reason-label { font-weight: 700; font-size: 11px; margin-bottom: 2px; }
+        .return-policy { border: 1px solid #ddd; border-radius: 6px; padding: 6px 8px; margin: 8px 0 4px; }
+        .rp-title { font-size: 10px; font-weight: 700; color: #444; margin-bottom: 5px; text-align: center; letter-spacing: 0.5px; }
+        .rp-row { display: flex; align-items: baseline; gap: 6px; margin-bottom: 3px; font-size: 10px; }
+        .rp-badge { display: inline-block; padding: 1px 6px; border-radius: 10px; font-weight: 700; font-size: 10px; white-space: nowrap; flex-shrink: 0; }
+        .rp-d7 { background: #e0f2fe; color: #0369a1; }
+        .rp-d14 { background: #dcfce7; color: #15803d; }
+        .rp-names { color: #555; line-height: 1.4; }
         .barcode-font { font-family: 'Libre Barcode 128 Text', cursive; font-size: 52px; letter-spacing: 2px; line-height: 1; }
         .barcode-num { font-size: 10px; letter-spacing: 2px; color: #333; margin-top: 2px; }
         .qr-section { display: flex; flex-direction: column; align-items: center; margin-top: 12px; gap: 4px; }
@@ -267,11 +333,13 @@ export class ThermalPrinter {
         ${data.storePhone ? `<div class="store-sub">هاتف: ${data.storePhone}</div>` : ''}
       </div>
       <div class="divider-solid"></div>
+      ${data.isRefund ? `<div class="refund-banner">★ فاتورة استرجاع ★</div>` : ''}
       <div class="row"><span>رقم الفاتورة</span><span style="font-family:monospace;font-weight:700">${data.invoiceNumber}</span></div>
       <div class="row"><span>التاريخ</span><span>${data.date}</span></div>
       <div class="row"><span>الكاشير</span><span>${data.cashierName}</span></div>
       ${data.branchName ? `<div class="row"><span>الفرع</span><span>${data.branchName}</span></div>` : ''}
       ${data.customerName ? `<div class="row"><span>العميل</span><span>${data.customerName}</span></div>` : ''}
+      ${data.customerPhone ? `<div class="row"><span>هاتف العميل</span><span style="direction:ltr;font-weight:700">${data.customerPhone}</span></div>` : ''}
       <div class="divider"></div>
       ${data.items.map((i) => `
         <div class="item-name">${i.nameAr || i.name}</div>
@@ -286,7 +354,13 @@ export class ThermalPrinter {
       ${data.changeAmount > 0 ? `<div class="row"><span>المتبقي</span><span>${data.changeAmount.toFixed(2)} ${cur}</span></div>` : ''}
       <div class="center" style="margin-top:4px"><span class="payment-badge">${paymentLabel(data.paymentMethod)}</span></div>
       <div class="divider" style="margin-top:8px"></div>
-      <div class="center" style="margin:6px 0 2px">شكراً لتسوقكم معنا</div>
+      ${returnPolicyHtml}
+      ${data.isRefund && data.refundReason ? `
+      <div class="refund-reason">
+        <div class="refund-reason-label">سبب الاسترجاع:</div>
+        <div>${data.refundReason}</div>
+      </div>` : ''}
+      <div class="center" style="margin:6px 0 2px">${data.isRefund ? 'تم الاسترجاع بنجاح' : 'شكراً لتسوقكم معنا'}</div>
       <div class="divider"></div>
       <div class="center" style="margin-top:6px">
         <div class="barcode-font">${data.invoiceNumber}</div>

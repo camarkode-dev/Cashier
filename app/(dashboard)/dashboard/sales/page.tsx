@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { salesApi } from '@/lib/api';
 import { resolveAppCurrency } from '@/lib/currency';
 import { formatCurrency, formatDate, getPaymentMethodLabel } from '@/lib/utils';
-import { ReceiptText, RotateCcw, Printer, PlusCircle, X } from 'lucide-react';
+import { ReceiptText, RotateCcw, Printer, PlusCircle, X, AlertTriangle } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth.store';
 import { cn } from '@/lib/utils';
 import toast from 'react-hot-toast';
@@ -25,6 +25,10 @@ export default function SalesPage() {
   const [payMethod, setPayMethod] = useState<string>('CASH');
   const [payNotes, setPayNotes] = useState('');
   const [paySubmitting, setPaySubmitting] = useState(false);
+  const [refundSale, setRefundSale] = useState<any>(null);
+  const [refundReason, setRefundReason] = useState('');
+  const [refundPhone, setRefundPhone] = useState('');
+  const [refundSubmitting, setRefundSubmitting] = useState(false);
   const cur = resolveAppCurrency(tenant?.currency, settingsCountry, settingsCurrency);
 
   const canManage = user?.role === 'OWNER' || user?.role === 'ADMIN';
@@ -40,9 +44,62 @@ export default function SalesPage() {
 
   useEffect(() => { load(); }, [dateFrom, dateTo]);
 
-  const handleRefund = async (saleId: string) => {
-    if (!confirm('هل تريد استرداد هذه الفاتورة؟')) return;
-    try { await salesApi.refund(saleId); toast.success('تم الاسترداد'); load(); } catch {}
+  const openRefund = (s: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setRefundSale(s);
+    setRefundReason('');
+    setRefundPhone(s.customer?.phone || '');
+  };
+
+  const handleRefund = async () => {
+    if (!refundSale) return;
+    if (!refundReason.trim()) { toast.error('يرجى ذكر سبب الاسترجاع'); return; }
+    setRefundSubmitting(true);
+    try {
+      const res: any = await apiClient.patch(`/sales/${refundSale.id}`, {
+        action: 'refund',
+        reason: refundReason.trim(),
+        customerPhone: refundPhone.trim() || undefined,
+      });
+      const updated = res?.data || res;
+      toast.success('تم الاسترداد');
+      setRefundSale(null);
+      // Print refund receipt
+      await thermalPrinter.printReceipt({
+        storeName: tenant?.name || '',
+        storeNameAr: tenant?.nameAr || tenant?.name || '',
+        invoiceNumber: refundSale.invoiceNumber || '',
+        date: new Date().toLocaleString('ar-EG'),
+        cashierName: user ? `${user.firstName} ${user.lastName}` : '',
+        branchName: refundSale.branch?.nameAr || refundSale.branch?.name || undefined,
+        customerName: refundSale.customer?.name || refundSale.customer?.nameAr || undefined,
+        customerPhone: refundPhone.trim() || undefined,
+        items: (refundSale.items || []).map((item: any) => ({
+          name: item.name,
+          nameAr: item.nameAr,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          total: item.total,
+          discountAmount: item.discountAmount || 0,
+        })),
+        subtotal: refundSale.subtotal,
+        discountAmount: refundSale.discountAmount || 0,
+        taxAmount: refundSale.taxAmount || 0,
+        total: refundSale.total,
+        paidAmount: refundSale.paidAmount || refundSale.total,
+        changeAmount: 0,
+        paymentMethod: refundSale.paymentMethod || 'CASH',
+        currency: cur,
+        paperSize: paperSize as any,
+        isRefund: true,
+        refundReason: refundReason.trim(),
+      });
+      load();
+    } catch (err: any) {
+      toast.error(err?.message || 'تعذر الاسترداد');
+    } finally {
+      setRefundSubmitting(false);
+    }
   };
 
   const handlePrint = async (s: any) => {
@@ -63,6 +120,7 @@ export default function SalesPage() {
           unitPrice: item.unitPrice,
           total: item.total,
           discountAmount: item.discountAmount || 0,
+          returnDays: item.returnDays ?? 7,
         })),
         subtotal: s.subtotal,
         discountAmount: s.discountAmount || 0,
@@ -211,7 +269,7 @@ export default function SalesPage() {
 
                       {s.status === 'COMPLETED' && (
                         <button
-                          onClick={() => handleRefund(s.id)}
+                          onClick={(e) => openRefund(s, e)}
                           className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950 text-gray-400 hover:text-red-500 transition-colors"
                           title="استرداد"
                         >
@@ -260,6 +318,15 @@ export default function SalesPage() {
                   >
                     <PlusCircle size={14} />
                     دفعة جديدة
+                  </button>
+                )}
+                {selected.status === 'COMPLETED' && canManage && (
+                  <button
+                    onClick={(e) => { setSelected(null); openRefund(selected, e); }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-50 dark:bg-red-950 text-red-500 text-sm font-semibold hover:bg-red-100 transition-colors"
+                  >
+                    <RotateCcw size={14} />
+                    استرداد
                   </button>
                 )}
                 <button onClick={() => setSelected(null)} className="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800">✕</button>
@@ -317,13 +384,80 @@ export default function SalesPage() {
         </div>
       )}
 
+      {/* Refund modal */}
+      {refundSale && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-sm border border-gray-100 dark:border-gray-800">
+            <div className="flex items-center justify-between p-5 border-b border-red-100 dark:border-red-900 bg-red-50 dark:bg-red-950 rounded-t-3xl">
+              <div className="flex items-center gap-2">
+                <AlertTriangle size={18} className="text-red-500" />
+                <div>
+                  <h3 className="font-bold text-red-700 dark:text-red-400">استرداد فاتورة</h3>
+                  <p className="text-xs text-red-400 mt-0.5">{refundSale.invoiceNumber}</p>
+                </div>
+              </div>
+              <button onClick={() => setRefundSale(null)} className="p-2 rounded-xl hover:bg-red-100 dark:hover:bg-red-900 text-red-400">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="bg-gray-50 dark:bg-gray-800 rounded-2xl px-4 py-3 flex justify-between text-sm">
+                <span className="text-gray-500">إجمالي الفاتورة</span>
+                <span className="font-black text-red-500">{formatCurrency(refundSale.total, cur)}</span>
+              </div>
+
+              <div>
+                <label className="label text-sm">سبب الاسترجاع <span className="text-red-500">*</span></label>
+                <input
+                  type="text"
+                  value={refundReason}
+                  onChange={(e) => setRefundReason(e.target.value)}
+                  className="input text-sm"
+                  placeholder="مثال: المنتج معطوب / تغيير رأي العميل"
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label className="label text-sm">رقم هاتف العميل</label>
+                <input
+                  type="tel"
+                  value={refundPhone}
+                  onChange={(e) => setRefundPhone(e.target.value)}
+                  className="input text-sm"
+                  dir="ltr"
+                  placeholder="05xxxxxxxx"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setRefundSale(null)}
+                  className="flex-1 py-3 rounded-xl border border-gray-200 dark:border-gray-700 font-semibold text-gray-600 dark:text-gray-400"
+                >
+                  إلغاء
+                </button>
+                <button
+                  onClick={handleRefund}
+                  disabled={refundSubmitting || !refundReason.trim()}
+                  className="flex-1 py-3 rounded-xl bg-red-500 hover:bg-red-600 text-white font-bold transition-colors disabled:opacity-50"
+                >
+                  {refundSubmitting ? 'جارٍ الاسترداد...' : 'تأكيد الاسترداد وطباعة'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Add payment modal */}
       {paymentSale && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-sm border border-gray-100 dark:border-gray-800">
             <div className="flex items-center justify-between p-5 border-b border-gray-100 dark:border-gray-800">
               <div>
-                <h3 className="font-bold">��ضافة دفعة</h3>
+                <h3 className="font-bold">إضافة دفعة</h3>
                 <p className="text-xs text-gray-400 mt-0.5">{paymentSale.invoiceNumber}</p>
               </div>
               <button onClick={() => setPaymentSale(null)} className="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800">

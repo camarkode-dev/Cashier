@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
         body.items.map(async (item) => {
           const product = await tx.product.findUnique({
             where: { id: item.productId },
-            select: { costPrice: true, name: true, nameAr: true, barcode: true },
+            select: { costPrice: true, name: true, nameAr: true, barcode: true, returnDays: true },
           });
 
           const costPrice = item.costPrice || product?.costPrice || 0;
@@ -153,6 +153,7 @@ export async function POST(req: NextRequest) {
             taxAmount: taxAmt,
             total,
             profit,
+            returnDays: product?.returnDays ?? 7,
           };
         }),
       );
