@@ -35,6 +35,8 @@ export default function ProductsPage() {
   const [showSearchScanner, setShowSearchScanner] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [form, setForm] = useState(emptyForm);
+  const [showNewCategoryInput, setShowNewCategoryInput] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
 
   const cur = resolveAppCurrency(tenant?.currency, settingsCountry, settingsCurrency);
 
@@ -68,6 +70,28 @@ export default function ProductsPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    let categoryId = form.categoryId || undefined;
+    // إذا اختار المستخدم "أخرى"، أضف الفئة الجديدة أولاً
+    if (categoryId === 'other') {
+      if (!newCategoryName.trim()) {
+        toast.error('يرجى إدخال اسم الفئة الجديدة');
+        return;
+      }
+      try {
+        const res = await categoriesApi.create({ name: newCategoryName, nameAr: newCategoryName });
+        if (res?.data?.id) {
+          categoryId = res.data.id;
+          // أضف الفئة الجديدة للقائمة
+          setCategories((prev) => [...prev, res.data]);
+        } else {
+          toast.error('تعذر إضافة الفئة الجديدة');
+          return;
+        }
+      } catch (err) {
+        toast.error('تعذر إضافة الفئة الجديدة');
+        return;
+      }
+    }
     const payload = {
       name: form.name.trim() || form.nameAr.trim(),
       nameAr: form.nameAr.trim() || undefined,
@@ -75,7 +99,7 @@ export default function ProductsPage() {
       costPrice: parseFloat(form.costPrice || '0'),
       barcode: form.barcode.trim() || undefined,
       sku: form.sku.trim() || undefined,
-      categoryId: form.categoryId || undefined,
+      categoryId,
       minStock: parseInt(form.minStock || '5'),
       taxRate: form.taxRate ? parseFloat(form.taxRate) : undefined,
       initialStock: parseInt(form.initialStock || '0'),
@@ -141,6 +165,8 @@ export default function ProductsPage() {
       taxRate: product.taxRate?.toString() || '',
       initialStock: (product.inventory?.[0]?.quantity ?? 0).toString(),
     });
+    setShowNewCategoryInput(false);
+    setNewCategoryName('');
     setShowForm(true);
   };
 
@@ -328,14 +354,36 @@ export default function ProductsPage() {
                 </div>
                 <div>
                   <label className="label">الفئة</label>
-                  <select className="input" value={form.categoryId} onChange={(e) => setForm((f) => ({ ...f, categoryId: e.target.value }))}>
+                  <select
+                    className="input"
+                    value={form.categoryId === '' ? '' : (categories.some((c:any) => c.id === form.categoryId) ? form.categoryId : 'other')}
+                    onChange={(e) => {
+                      setForm((f) => ({ ...f, categoryId: e.target.value }));
+                      if (e.target.value === 'other') {
+                        setShowNewCategoryInput(true);
+                      } else {
+                        setShowNewCategoryInput(false);
+                        setNewCategoryName('');
+                      }
+                    }}
+                  >
                     <option value="">بدون فئة</option>
                     {categories.map((category: any) => (
                       <option key={category.id} value={category.id}>
                         {category.nameAr || category.name}
                       </option>
                     ))}
+                    <option value="other">أخرى...</option>
                   </select>
+                  {showNewCategoryInput && (
+                    <input
+                      className="input mt-2"
+                      placeholder="اسم الفئة الجديدة"
+                      value={newCategoryName}
+                      onChange={(e) => setNewCategoryName(e.target.value)}
+                      required={form.categoryId === 'other'}
+                    />
+                  )}
                 </div>
               </div>
 

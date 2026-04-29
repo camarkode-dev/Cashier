@@ -10,39 +10,49 @@ datasource db {
 
 // ─── Enums ──────────────────────────────────────────────────────────────────
 
-enum UserRole {
-  OWNER
-  ADMIN
-  CASHIER
+model Sale {
+  id             String         @id @default(uuid())
+  invoiceNumber  String         @unique
+  offlineId      String?        @unique
+  branchId       String
+  userId         String
+  customerId     String?
+  status         SaleStatus    @default(COMPLETED)
+  paymentMethod  PaymentMethod @default(CASH)
+  subtotal       Float
+  discountAmount Float         @default(0)
+  taxAmount      Float         @default(0)
+  total          Float
+  profit         Float         @default(0)
+  paidAmount     Float         @default(0)
+  changeAmount   Float         @default(0)
+  notes          String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  branch   Branch    @relation(fields: [branchId], references: [id])
+  user     User      @relation(fields: [userId], references: [id])
+  customer Customer? @relation(fields: [customerId], references: [id])
+  items    SaleItem[]
+  payments Payment[]
+
+  @@index([branchId, createdAt])
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
 }
 
-enum SaleStatus {
-  COMPLETED
-  REFUNDED
-  VOID
-}
+model Payment {
+  id        String   @id @default(uuid())
+  saleId    String
+  amount    Float
+  method    PaymentMethod
+  notes     String?
+  createdAt DateTime @default(now())
 
-enum PaymentMethod {
-  CASH
-  CARD
-  MOBILE
-  QR
-  SPLIT
-  CREDIT
-}
+  sale      Sale     @relation(fields: [saleId], references: [id])
 
-enum StockTransferStatus {
-  PENDING
-  COMPLETED
-  CANCELLED
-}
-
-enum NotificationType {
-  LOW_STOCK
-  STOCK_TRANSFER
-  NEW_SALE
-  SYSTEM
-  INFO
+  @@index([saleId])
 }
 
 // ─── Tenant ──────────────────────────────────────────────────────────────────
@@ -151,7 +161,9 @@ model Branch {
   @@index([tenantId])
 }
 
-// ─── Categories ─────────────────────────────────────────────────────────────
+
+// ─── Enums ──────────────────────────────────────────────────────────────────
+
 
 model Category {
   id     String    @id @default(cuid())
