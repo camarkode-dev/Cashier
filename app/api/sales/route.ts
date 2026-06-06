@@ -142,8 +142,8 @@ export async function POST(req: NextRequest) {
           return {
             productId: item.productId,
             name: item.name || product?.name || '',
-            nameAr: item.nameAr || product?.nameAr,
-            barcode: item.barcode || product?.barcode,
+            nameAr: item.nameAr || product?.nameAr || undefined,
+            barcode: item.barcode || product?.barcode || undefined,
             quantity: item.quantity,
             unitPrice: item.unitPrice,
             costPrice,

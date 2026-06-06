@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { categoriesApi, productsApi } from '@/lib/api';
 import { resolveAppCurrency } from '@/lib/currency';
 import { cn, formatCurrency } from '@/lib/utils';
-import { Plus, Search, Package, Edit2, Trash2, AlertTriangle, ScanLine } from 'lucide-react';
+import { Plus, Search, Package, Edit2, Trash2, AlertTriangle, ScanLine, Upload, X } from 'lucide-react';
 import { BarcodeScanner } from '@/components/pos/BarcodeScanner';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '@/stores/auth.store';
@@ -16,6 +16,7 @@ const emptyForm = {
   costPrice: '',
   barcode: '',
   sku: '',
+  image: '',
   categoryId: '',
   minStock: '5',
   taxRate: '',
@@ -40,6 +41,57 @@ export default function ProductsPage() {
   const [newCategoryName, setNewCategoryName] = useState('');
 
   const cur = resolveAppCurrency(tenant?.currency, settingsCountry, settingsCurrency);
+
+  const resizeProductImage = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      if (!file.type.startsWith('image/')) {
+        reject(new Error('يرجى اختيار صورة صالحة'));
+        return;
+      }
+      if (file.size > 4 * 1024 * 1024) {
+        reject(new Error('حجم الصورة يجب ألا يزيد عن 4 ميجابايت'));
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        const image = new Image();
+        image.onload = () => {
+          const maxSize = 640;
+          const ratio = Math.min(maxSize / image.width, maxSize / image.height, 1);
+          const width = Math.max(1, Math.round(image.width * ratio));
+          const height = Math.max(1, Math.round(image.height * ratio));
+          const canvas = document.createElement('canvas');
+          canvas.width = maxSize;
+          canvas.height = maxSize;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            reject(new Error('تعذر تجهيز الصورة'));
+            return;
+          }
+
+          ctx.fillStyle = '#f9fafb';
+          ctx.fillRect(0, 0, maxSize, maxSize);
+          ctx.drawImage(image, (maxSize - width) / 2, (maxSize - height) / 2, width, height);
+          resolve(canvas.toDataURL('image/jpeg', 0.82));
+        };
+        image.onerror = () => reject(new Error('تعذر قراءة الصورة'));
+        image.src = String(reader.result || '');
+      };
+      reader.onerror = () => reject(new Error('تعذر قراءة الصورة'));
+      reader.readAsDataURL(file);
+    });
+
+  const handleImageUpload = async (file?: File | null) => {
+    if (!file) return;
+    try {
+      const image = await resizeProductImage(file);
+      setForm((current) => ({ ...current, image }));
+      toast.success('تم تجهيز صورة المنتج');
+    } catch (error: any) {
+      toast.error(error?.message || 'تعذر رفع الصورة');
+    }
+  };
 
   const resetForm = () => {
     setForm(emptyForm);
@@ -102,6 +154,7 @@ export default function ProductsPage() {
       costPrice: parseFloat(form.costPrice || '0'),
       barcode: barcode || (editing ? null : undefined),
       sku: sku || (editing ? null : undefined),
+      image: form.image || (editing ? null : undefined),
       categoryId,
       minStock: parseInt(form.minStock || '5'),
       taxRate: form.taxRate ? parseFloat(form.taxRate) : undefined,
@@ -164,6 +217,7 @@ export default function ProductsPage() {
       costPrice: product.costPrice?.toString() || '',
       barcode: product.barcode || '',
       sku: product.sku || '',
+      image: product.image || '',
       categoryId: product.categoryId || '',
       minStock: (product.minStock ?? product.inventory?.[0]?.minStock ?? 5).toString(),
       taxRate: product.taxRate?.toString() || '',
@@ -249,8 +303,12 @@ export default function ProductsPage() {
                     <tr key={product.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-950 flex items-center justify-center text-brand-500">
-                            <Package size={16} />
+                          <div className="w-11 h-11 overflow-hidden rounded-xl bg-brand-50 dark:bg-brand-950 flex items-center justify-center text-brand-500">
+                            {product.image ? (
+                              <img src={product.image} alt={product.nameAr || product.name} className="h-full w-full object-cover" />
+                            ) : (
+                              <Package size={16} />
+                            )}
                           </div>
                           <div>
                             <p className="font-semibold text-gray-900 dark:text-white">{product.nameAr || product.name}</p>
@@ -312,6 +370,50 @@ export default function ProductsPage() {
             </div>
 
             <form onSubmit={handleSubmit} className="p-5 space-y-4">
+              <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-900">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-2xl bg-white text-brand-500 dark:bg-gray-800">
+                      {form.image ? (
+                        <img src={form.image} alt="صورة المنتج" className="h-full w-full object-cover" />
+                      ) : (
+                        <Package size={30} />
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-gray-900 dark:text-white">صورة المنتج</p>
+                      <p className="mt-1 text-xs text-gray-400">ستظهر في صفحة نقاط البيع وكشف المنتجات.</p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <label className="btn-secondary inline-flex cursor-pointer items-center gap-2">
+                      <Upload size={16} />
+                      رفع صورة
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(event) => {
+                          handleImageUpload(event.target.files?.[0]);
+                          event.currentTarget.value = '';
+                        }}
+                      />
+                    </label>
+                    {form.image && (
+                      <button
+                        type="button"
+                        onClick={() => setForm((current) => ({ ...current, image: '' }))}
+                        className="btn-secondary inline-flex items-center gap-2"
+                      >
+                        <X size={16} />
+                        حذف الصورة
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="label">الاسم (عربي) *</label>

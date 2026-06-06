@@ -3,13 +3,14 @@ import { useState, useEffect } from 'react';
 import { salesApi } from '@/lib/api';
 import { resolveAppCurrency } from '@/lib/currency';
 import { formatCurrency, formatDate, getPaymentMethodLabel } from '@/lib/utils';
-import { ReceiptText, RotateCcw, Printer, PlusCircle, X, AlertTriangle } from 'lucide-react';
+import { ReceiptText, RotateCcw, Printer, PlusCircle, X, AlertTriangle, Eye } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth.store';
 import { cn } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import { useSettingsStore } from '@/stores/settings.store';
 import { thermalPrinter } from '@/lib/printing';
 import { apiClient } from '@/lib/api';
+import { extractPaymentReceiptImage, stripPaymentReceiptImage } from '@/lib/payment-receipt';
 
 export default function SalesPage() {
   const { tenant, user } = useAuthStore();
@@ -29,6 +30,7 @@ export default function SalesPage() {
   const [refundReason, setRefundReason] = useState('');
   const [refundPhone, setRefundPhone] = useState('');
   const [refundSubmitting, setRefundSubmitting] = useState(false);
+  const [receiptImage, setReceiptImage] = useState<string | null>(null);
   const cur = resolveAppCurrency(tenant?.currency, settingsCountry, settingsCurrency);
 
   const canManage = user?.role === 'OWNER' || user?.role === 'ADMIN';
@@ -153,6 +155,16 @@ export default function SalesPage() {
     setPayNotes('');
   };
 
+  const openUploadedReceipt = (sale: any, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    const image = extractPaymentReceiptImage(sale.notes);
+    if (!image) {
+      toast.error('لا يوجد إيصال مرفوع لهذا الطلب');
+      return;
+    }
+    setReceiptImage(image);
+  };
+
   const handleAddPayment = async () => {
     if (!paymentSale) return;
     const amount = parseFloat(payAmount);
@@ -262,6 +274,16 @@ export default function SalesPage() {
                         }
                       </button>
 
+                      {extractPaymentReceiptImage(s.notes) && (
+                        <button
+                          onClick={(e) => openUploadedReceipt(s, e)}
+                          className="p-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950 text-gray-400 hover:text-blue-500 transition-colors"
+                          title="فتح إيصال الدفع المرفوع"
+                        >
+                          <Eye size={15} />
+                        </button>
+                      )}
+
                       {s.status === 'PARTIAL' && canManage && (
                         <button
                           onClick={(e) => openPayment(s, e)}
@@ -316,6 +338,15 @@ export default function SalesPage() {
                   <Printer size={14} />
                   طباعة
                 </button>
+                {extractPaymentReceiptImage(selected.notes) && (
+                  <button
+                    onClick={(e) => openUploadedReceipt(selected, e)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 dark:bg-blue-950 text-blue-500 text-sm font-semibold hover:bg-blue-100 transition-colors"
+                  >
+                    <Eye size={14} />
+                    الإيصال
+                  </button>
+                )}
                 {selected.status === 'PARTIAL' && canManage && (
                   <button
                     onClick={(e) => { setSelected(null); openPayment(selected, e); }}
@@ -379,9 +410,9 @@ export default function SalesPage() {
                   </div>
                 )}
               </div>
-              {selected.notes && (
+              {stripPaymentReceiptImage(selected.notes) && (
                 <div className="bg-gray-50 dark:bg-gray-800 rounded-xl p-3 text-xs text-gray-500">
-                  <span className="font-semibold">ملاحظات: </span>{selected.notes}
+                  <span className="font-semibold">ملاحظات: </span>{stripPaymentReceiptImage(selected.notes)}
                 </div>
               )}
             </div>
@@ -518,6 +549,20 @@ export default function SalesPage() {
                 {paySubmitting ? 'جارٍ التسجيل...' : 'تأكيد الدفعة وطباعة إيصال'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {receiptImage && (
+        <div className="fixed inset-0 bg-black/70 z-[60] flex items-center justify-center p-4" onClick={() => setReceiptImage(null)}>
+          <div className="w-full max-w-lg rounded-3xl border border-gray-100 bg-white p-4 shadow-2xl dark:border-gray-800 dark:bg-gray-900" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="font-bold text-gray-900 dark:text-white">إيصال الدفع المرفوع</h3>
+              <button onClick={() => setReceiptImage(null)} className="rounded-xl p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800">
+                <X size={18} />
+              </button>
+            </div>
+            <img src={receiptImage} alt="إيصال الدفع المرفوع" className="max-h-[75vh] w-full rounded-2xl bg-gray-50 object-contain dark:bg-gray-800" />
           </div>
         </div>
       )}

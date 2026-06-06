@@ -5,6 +5,7 @@ import { Banknote, CheckCircle2, CreditCard, Landmark, Smartphone, Upload, X } f
 import { formatCurrency } from '@/lib/utils';
 import { usePOSStore } from '@/stores/pos.store';
 import { cn } from '@/lib/utils';
+import { appendPaymentReceiptImage } from '@/lib/payment-receipt';
 
 interface PaymentModalProps {
   total: number;
@@ -45,7 +46,8 @@ export function PaymentModal({ total, currency, onConfirm, onClose, isProcessing
     const parts: string[] = [];
     if (transferRef.trim()) parts.push(`مرجع التحويل: ${transferRef.trim()}`);
     if (receiptName) parts.push(`إيصال: ${receiptName}`);
-    return parts.length ? `[${transferLabel(paymentMethod)}] ${parts.join(' | ')}` : undefined;
+    const notes = parts.length ? `[${transferLabel(paymentMethod)}] ${parts.join(' | ')}` : undefined;
+    return appendPaymentReceiptImage(notes, receiptPreview);
   };
 
   useEffect(() => {
@@ -70,13 +72,59 @@ export function PaymentModal({ total, currency, onConfirm, onClose, isProcessing
     if (fileRef.current) fileRef.current.value = '';
   };
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const resizeReceiptImage = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      if (!file.type.startsWith('image/')) {
+        reject(new Error('يرجى اختيار صورة إيصال صالحة'));
+        return;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        reject(new Error('حجم صورة الإيصال يجب ألا يزيد عن 5 ميجابايت'));
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        const image = new Image();
+        image.onload = () => {
+          const maxSize = 900;
+          const ratio = Math.min(maxSize / image.width, maxSize / image.height, 1);
+          const width = Math.max(1, Math.round(image.width * ratio));
+          const height = Math.max(1, Math.round(image.height * ratio));
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            reject(new Error('تعذر تجهيز صورة الإيصال'));
+            return;
+          }
+
+          ctx.fillStyle = '#fff';
+          ctx.fillRect(0, 0, width, height);
+          ctx.drawImage(image, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', 0.82));
+        };
+        image.onerror = () => reject(new Error('تعذر قراءة صورة الإيصال'));
+        image.src = String(reader.result || '');
+      };
+      reader.onerror = () => reject(new Error('تعذر قراءة صورة الإيصال'));
+      reader.readAsDataURL(file);
+    });
+
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    setReceiptName(file.name);
-    const reader = new FileReader();
-    reader.onload = (ev) => setReceiptPreview(ev.target?.result as string);
-    reader.readAsDataURL(file);
+    try {
+      const image = await resizeReceiptImage(file);
+      setReceiptName(file.name);
+      setReceiptPreview(image);
+    } catch (error: any) {
+      setReceiptName('');
+      setReceiptPreview(null);
+      if (fileRef.current) fileRef.current.value = '';
+      alert(error?.message || 'تعذر رفع صورة الإيصال');
+    }
   };
 
   return (

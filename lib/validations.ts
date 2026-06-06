@@ -13,6 +13,13 @@ const nullableTrimmedString = z.preprocess((value) => {
   return trimmed === '' ? null : trimmed;
 }, z.string().nullable().optional());
 
+const imageString = z.preprocess((value) => {
+  if (value === null) return null;
+  if (typeof value !== 'string') return value;
+  const trimmed = value.trim();
+  return trimmed === '' ? null : trimmed;
+}, z.string().max(1_500_000).nullable().optional());
+
 // ─── Auth ────────────────────────────────────────────────────────────────────
 
 export const loginSchema = z.object({
@@ -31,7 +38,7 @@ export const productSchema = z.object({
   costPrice: z.number().nonnegative().default(0),
   taxRate: z.number().min(0).max(100).default(0),
   categoryId: optionalTrimmedString,
-  image: z.string().url().optional().or(z.literal('')),
+  image: imageString,
   description: optionalTrimmedString,
   isActive: z.boolean().default(true),
   minStock: z.number().int().nonnegative().default(5),
@@ -47,8 +54,8 @@ export const productUpdateSchema = productSchema.partial();
 export const saleItemSchema = z.object({
   productId: z.string(),
   name: z.string(),
-  nameAr: z.string().optional(),
-  barcode: z.string().optional(),
+  nameAr: nullableTrimmedString,
+  barcode: nullableTrimmedString,
   quantity: z.number().int().positive(),
   unitPrice: z.number().nonnegative(),
   costPrice: z.number().nonnegative().default(0),

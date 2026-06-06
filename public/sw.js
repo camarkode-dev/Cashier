@@ -1,4 +1,4 @@
-const CACHE_NAME = 'Cashier-v2';
+const CACHE_NAME = 'Cashier-v3';
 
 const STATIC_ASSETS = [
   '/',
@@ -42,6 +42,7 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
 
   if (url.origin !== location.origin) return;
+  if (request.method !== 'GET') return;
 
   if (
     url.pathname.startsWith('/api/auth/') ||
@@ -52,8 +53,6 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (url.pathname.startsWith('/api/')) {
-    if (request.method !== 'GET') return;
-
     const shouldCache = API_CACHE_URLS.some((path) => url.pathname.startsWith(path));
     if (!shouldCache) return;
 
@@ -61,8 +60,8 @@ self.addEventListener('fetch', (event) => {
       fetch(request.clone())
         .then((response) => {
           if (response.ok) {
-            const cloned = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, cloned));
+            const responseForCache = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, responseForCache)).catch(() => {});
           }
           return response;
         })
@@ -94,16 +93,19 @@ self.addEventListener('fetch', (event) => {
       (cached) =>
         cached ||
         fetch(request).then((response) => {
-          if (
+          const shouldCache =
             response.ok &&
             (
               request.url.includes('/icons/') ||
               request.url.includes('/icon-') ||
               request.url.includes('/apple-icon') ||
               request.url.includes('/_next/static/')
-            )
+            );
+          const responseForCache = shouldCache ? response.clone() : null;
+          if (
+            responseForCache
           ) {
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, response.clone()));
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, responseForCache)).catch(() => {});
           }
           return response;
         }),
