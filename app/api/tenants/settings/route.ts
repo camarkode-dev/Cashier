@@ -48,6 +48,7 @@ export async function PUT(req: NextRequest) {
         name: body.name,
         nameAr: body.nameAr || null,
         phone: body.phone || null,
+        logo: body.logo || null,
         currency: body.currency,
         taxRate: body.taxRate,
       },
@@ -65,6 +66,7 @@ export async function PUT(req: NextRequest) {
     await audit(dbUser.id, 'UPDATE', 'tenant', dbUser.tenantId, {
       currency: tenant.currency,
       taxRate: tenant.taxRate,
+      logoChanged: body.logo !== undefined,
     });
 
     return ok(tenant);

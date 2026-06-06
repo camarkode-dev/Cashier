@@ -8,10 +8,18 @@ export async function GET(req: NextRequest) {
   if (!dbUser) return unauthorized();
 
   const limit = Math.min(parseInt(req.nextUrl.searchParams.get('limit') || '50'), 100);
-  const unreadOnly = req.nextUrl.searchParams.get('unread') === 'true';
+  const unreadOnly =
+    req.nextUrl.searchParams.get('unread') === 'true' ||
+    req.nextUrl.searchParams.get('unreadOnly') === 'true';
+  const countOnly = req.nextUrl.searchParams.get('countOnly') === 'true';
 
   const where: any = { OR: [{ userId: dbUser.id }, { userId: null }] };
   if (unreadOnly) where.isRead = false;
+
+  if (countOnly) {
+    const unreadCount = await prisma.notification.count({ where: { ...where, isRead: false } });
+    return ok({ data: [], unreadCount });
+  }
 
   const [data, unreadCount] = await Promise.all([
     prisma.notification.findMany({

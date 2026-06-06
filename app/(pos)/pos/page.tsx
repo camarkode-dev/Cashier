@@ -1,6 +1,6 @@
-'use client';
+﻿'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import {
@@ -8,8 +8,6 @@ import {
   LayoutDashboard,
   Package,
   RefreshCw,
-  Receipt,
-  ScanBarcode,
   ScanLine,
   Search,
   ShoppingCart,
@@ -19,7 +17,7 @@ import {
 import { categoriesApi, productsApi } from '@/lib/api';
 import { resolveAppCurrency } from '@/lib/currency';
 import { db } from '@/lib/db';
-import { thermalPrinter } from '@/lib/printing';
+import { thermalPrinter, type ReceiptData } from '@/lib/printing';
 import { cn, formatCurrency } from '@/lib/utils';
 import { Logo } from '@/components/common/Logo';
 import { BarcodeScanner } from '@/components/pos/BarcodeScanner';
@@ -32,23 +30,16 @@ import { useSettingsStore } from '@/stores/settings.store';
 
 const INITIAL_PRODUCTS_LIMIT = 120;
 
-const workflowSteps = [
-  { title: '1. ابحث أو امسح', description: 'استخدم البحث أو الباركود للوصول للمنتج بسرعة.' },
-  { title: '2. أضف للسلة', description: 'اضغط على المنتج، والكمية تتحدث فورًا.' },
-  { title: '3. راجع الفاتورة', description: 'الخصومات والضرائب تظهر مباشرة في السلة.' },
-  { title: '4. أنهِ الدفع', description: 'ادفع واطبع الإيصال من نفس الشاشة.' },
-];
-
 export default function POSPage() {
   const router = useRouter();
   const { user, tenant } = useAuthStore();
   const {
     activeBranchId,
     autoPrint,
+    cashierPrinter,
     country: settingsCountry,
     currency: settingsCurrency,
     isOnline,
-    paperSize,
   } = useSettingsStore();
   const posStore = usePOSStore();
   const { addItem, cart } = posStore;
@@ -57,7 +48,6 @@ export default function POSPage() {
   const [categories, setCategories] = useState<any[]>([]);
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [search, setSearch] = useState('');
-  const [quickBarcode, setQuickBarcode] = useState('');
   const [scanning, setScanning] = useState(false);
   const [showPayment, setShowPayment] = useState(false);
   const [showReceipt, setShowReceipt] = useState(false);
@@ -104,7 +94,7 @@ export default function POSPage() {
       try {
         if (isOnline) {
           const [productResult, categoryResult] = await Promise.allSettled([
-            productsApi.list({ limit: INITIAL_PRODUCTS_LIMIT, branchId }),
+            productsApi.list({ limit: INITIAL_PRODUCTS_LIMIT, branchId, withInventory: true }),
             categoriesApi.list(),
           ]);
 
@@ -165,7 +155,6 @@ export default function POSPage() {
       }
       if (event.key === 'Escape') {
         setScanning(false);
-        setQuickBarcode('');
         setSearch('');
         searchRef.current?.focus();
       }
@@ -232,6 +221,7 @@ export default function POSPage() {
             search,
             categoryId: activeCategory === 'all' ? undefined : activeCategory,
             branchId,
+            withInventory: true,
             limit: 60,
           });
           const loadedProducts = Array.isArray((result as any)?.data)
@@ -306,14 +296,39 @@ export default function POSPage() {
     [filteredProducts, search, addItem, handleBarcodeScanned],
   );
 
-  const submitQuickBarcode = async (event?: FormEvent) => {
-    event?.preventDefault();
-    const code = quickBarcode.trim();
-    if (!code) return;
-    setQuickBarcode('');
-    await handleBarcodeScanned(code);
-    searchRef.current?.focus();
-  };
+  const buildReceiptData = (sale: any, paidAmount?: number): ReceiptData => ({
+    storeName: tenant?.name || '',
+    storeNameAr: tenant?.nameAr || tenant?.name || 'أولاد أيمن للأدوات المنزلية',
+    logoUrl: tenant?.logo || '/logo-mark.png',
+    invoiceNumber: sale.invoiceNumber || sale.offlineId || '',
+    date: sale.createdAt ? new Date(sale.createdAt).toLocaleString('ar-EG') : new Date().toLocaleString('ar-EG'),
+    cashierName: `${user?.firstName || ''} ${user?.lastName || ''}`.trim(),
+    branchName: sale.branch?.nameAr || sale.branch?.name,
+    customerName: sale.customer?.nameAr || sale.customer?.name,
+    customerPhone: sale.customer?.phone,
+    items: (sale.items || []).map((item: any) => ({
+      name: item.name,
+      nameAr: item.nameAr,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      total: item.total,
+      discountAmount: item.discountAmount,
+      returnDays: item.returnDays,
+    })),
+    subtotal: sale.subtotal || 0,
+    discountAmount: sale.discountAmount || 0,
+    taxAmount: sale.taxAmount || 0,
+    total: sale.total || 0,
+    paidAmount: sale.paidAmount ?? paidAmount ?? 0,
+    changeAmount: sale.changeAmount || 0,
+    paymentMethod: sale.paymentMethod || 'CASH',
+    remainingAmount:
+      sale.status === 'PARTIAL' || (sale.paymentMethod === 'CREDIT' && (sale.paidAmount || 0) < (sale.total || 0))
+        ? Math.max(0, (sale.total || 0) - (sale.paidAmount || 0))
+        : undefined,
+    currency,
+    paperSize: cashierPrinter.paperWidth,
+  });
 
   const handleCheckout = async (paidAmount: number, paymentNotes?: string) => {
     if (!user?.id) {
@@ -329,30 +344,13 @@ export default function POSPage() {
       setShowPayment(false);
 
       if (autoPrint && sale) {
-        await thermalPrinter.printReceipt({
-          storeName: tenant?.name || '',
-          storeNameAr: tenant?.nameAr || tenant?.name || 'أولاد أيمن للأدوات المنزلية',
-          invoiceNumber: sale.invoiceNumber || sale.offlineId || '',
-          date: new Date().toLocaleString('ar-EG'),
-          cashierName: `${user?.firstName} ${user?.lastName}`,
-          items: (sale.items || []).map((item: any) => ({
-            name: item.name,
-            nameAr: item.nameAr,
-            quantity: item.quantity,
-            unitPrice: item.unitPrice,
-            total: item.total,
-            discountAmount: item.discountAmount,
-          })),
-          subtotal: sale.subtotal,
-          discountAmount: sale.discountAmount || 0,
-          taxAmount: sale.taxAmount || 0,
-          total: sale.total,
-          paidAmount,
-          changeAmount: sale.changeAmount || 0,
-          paymentMethod: sale.paymentMethod || 'CASH',
-          currency,
-          paperSize,
-        });
+        const printResult = await thermalPrinter.printReceipt(buildReceiptData(sale, paidAmount), cashierPrinter);
+        if (printResult.ok) {
+          toast.success(printResult.message);
+        } else {
+          toast.error(printResult.message);
+          setShowReceipt(true);
+        }
       } else {
         setShowReceipt(true);
       }
@@ -360,33 +358,6 @@ export default function POSPage() {
       toast.error(error?.message || 'تعذر إتمام عملية البيع');
     }
   };
-
-  const dashboardCards = useMemo(
-    () => [
-      {
-        label: 'المنتجات المعروضة',
-        value: filteredProducts.length.toLocaleString('ar-EG'),
-        hint: activeCategory === 'all' ? 'من كل الفئات' : 'ضمن الفئة المختارة',
-        icon: Package,
-        tone: 'bg-blue-50 text-blue-600 dark:bg-blue-950',
-      },
-      {
-        label: 'عناصر السلة',
-        value: cart.length.toLocaleString('ar-EG'),
-        hint: cart.length ? 'جاهزة للدفع' : 'ابدأ بإضافة المنتجات',
-        icon: ShoppingCart,
-        tone: 'bg-brand-50 text-brand-600 dark:bg-brand-950',
-      },
-      {
-        label: 'إجمالي الفاتورة',
-        value: formatCurrency(posStore.total(), currency),
-        hint: 'يتحدث لحظيًا',
-        icon: Receipt,
-        tone: 'bg-green-50 text-green-600 dark:bg-green-950',
-      },
-    ],
-    [activeCategory, cart.length, currency, filteredProducts.length, posStore],
-  );
 
   if (!user?.id) {
     return (
@@ -444,90 +415,17 @@ export default function POSPage() {
           </div>
         </div>
 
-        <div className="border-b border-gray-50 px-4 py-3 dark:border-gray-800">
-          <div className="grid gap-3 xl:grid-cols-[1.2fr,1fr]">
-            <div className="rounded-3xl border border-gray-100 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-4 text-white dark:border-gray-800">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/60">Workflow</p>
-                  <h2 className="mt-2 text-lg font-black">مسار بيع سريع وواضح</h2>
-                  <p className="mt-1 text-sm text-white/70">
-                    صفحة البيع أصبحت تعرض الخطوات الأساسية والباركود السريع من أول نظرة.
-                  </p>
-                </div>
-                <div className="rounded-2xl bg-white/10 p-3">
-                  <ScanBarcode size={22} />
-                </div>
-              </div>
-
-              <div className="mt-4 grid gap-2 md:grid-cols-2">
-                {workflowSteps.map((step) => (
-                  <div key={step.title} className="rounded-2xl bg-white/8 px-3 py-3">
-                    <p className="text-sm font-bold">{step.title}</p>
-                    <p className="mt-1 text-xs leading-5 text-white/70">{step.description}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="rounded-3xl border border-gray-100 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-bold text-gray-900 dark:text-white">باركود سريع</p>
-                  <p className="mt-1 text-xs text-gray-400">أدخل الرقم يدويًا أو استخدم ماسح USB أو الكاميرا.</p>
-                </div>
-                <button
-                  onClick={() => setScanning(true)}
-                  className="rounded-2xl bg-brand-50 p-3 text-brand-500 transition-colors hover:bg-brand-100 dark:bg-brand-950"
-                >
-                  <ScanLine size={18} />
-                </button>
-              </div>
-
-              <form onSubmit={submitQuickBarcode} className="mt-4 flex gap-2">
-                <input
-                  type="text"
-                  value={quickBarcode}
-                  onChange={(event) => setQuickBarcode(event.target.value)}
-                  placeholder="أدخل الباركود ثم اضغط Enter"
-                  className="input flex-1 text-sm font-mono"
-                  dir="ltr"
-                />
-                <button type="submit" className="btn-brand px-4 py-2.5 text-sm">
-                  إضافة
-                </button>
-              </form>
-
-              <div className="mt-4 grid gap-2 sm:grid-cols-3">
-                {dashboardCards.map((card) => {
-                  const Icon = card.icon;
-                  return (
-                    <div key={card.label} className="rounded-2xl border border-gray-100 p-3 dark:border-gray-800">
-                      <div className="flex items-center gap-2">
-                        <div className={cn('rounded-xl p-2', card.tone)}>
-                          <Icon size={16} />
-                        </div>
-                        <p className="text-xs text-gray-400">{card.label}</p>
-                      </div>
-                      <p className="mt-3 text-sm font-black text-gray-900 dark:text-white">{card.value}</p>
-                      <p className="mt-1 text-xs text-gray-400">{card.hint}</p>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-
-          {loadError && (
-            <div className="mt-3 flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
+        {loadError && (
+          <div className="border-b border-gray-50 px-4 py-3 dark:border-gray-800">
+            <div className="flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
               <AlertTriangle size={16} className="flex-shrink-0" />
               <span className="flex-1">{loadError}</span>
               <button onClick={() => loadProducts()} className="font-bold text-amber-800 dark:text-amber-200">
                 إعادة التحميل
               </button>
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
         <div className="flex gap-2 overflow-x-auto border-b border-gray-50 px-4 py-2 scrollbar-hide dark:border-gray-800">
           <button
@@ -570,6 +468,10 @@ export default function POSPage() {
               {filteredProducts.map((product: any) => {
                 const stock = product.inventory?.[0]?.quantity ?? product.stock ?? 0;
                 const inCart = cart.find((item) => item.productId === product.id);
+                const categoryColor = product.category?.color || '#f97316';
+                const categoryLabel = product.category?.nameAr || product.category?.name || 'بدون فئة';
+                const productLabel = product.nameAr || product.name;
+                const stockLabel = stock <= 0 ? 'نفد' : stock <= 5 ? `قليل: ${stock}` : `متاح: ${stock}`;
 
                 return (
                   <button
@@ -584,12 +486,12 @@ export default function POSPage() {
                       toast.success(`+1 ${product.nameAr || product.name}`, { duration: 900 });
                     }}
                     className={cn(
-                      'group relative flex min-h-[156px] flex-col justify-between rounded-3xl border-2 p-3 text-start transition-all duration-150 active:scale-[0.98]',
+                      'group relative flex min-h-[190px] flex-col overflow-hidden rounded-2xl border-2 bg-white text-start transition-all duration-150 active:scale-[0.98] dark:bg-gray-900',
                       stock <= 0
-                        ? 'cursor-not-allowed border-gray-100 bg-gray-50 opacity-50 dark:border-gray-800 dark:bg-gray-900'
+                        ? 'cursor-not-allowed border-gray-100 opacity-55 dark:border-gray-800'
                         : inCart
-                          ? 'border-brand-500 bg-brand-50 shadow-md dark:bg-brand-950'
-                          : 'border-gray-100 bg-white hover:border-brand-300 hover:shadow-md dark:border-gray-800 dark:bg-gray-900',
+                          ? 'border-brand-500 shadow-md ring-2 ring-brand-100 dark:ring-brand-950'
+                          : 'border-gray-100 hover:border-brand-300 hover:shadow-md dark:border-gray-800',
                     )}
                   >
                     {inCart && (
@@ -598,21 +500,21 @@ export default function POSPage() {
                       </span>
                     )}
 
-                    <div className="flex items-start justify-between gap-2">
+                    <div className="relative h-24 bg-gray-50 dark:bg-gray-800">
                       {product.image ? (
-                        <img src={product.image} alt={product.name} className="h-14 w-14 rounded-2xl object-cover" />
+                        <img src={product.image} alt={productLabel} className="h-full w-full object-cover" />
                       ) : (
                         <div
-                          className="flex h-14 w-14 items-center justify-center rounded-2xl"
-                          style={{ background: `${product.category?.color || '#f97316'}20` }}
+                          className="flex h-full w-full items-center justify-center"
+                          style={{ background: `${categoryColor}18` }}
                         >
-                          <Package size={22} style={{ color: product.category?.color || '#f97316' }} />
+                          <Package size={32} style={{ color: categoryColor }} />
                         </div>
                       )}
 
                       <span
                         className={cn(
-                          'rounded-full px-2.5 py-1 text-[11px] font-bold',
+                          'absolute end-2 top-2 rounded-full px-2.5 py-1 text-[11px] font-bold shadow-sm',
                           stock <= 0
                             ? 'bg-red-50 text-red-600 dark:bg-red-950 dark:text-red-300'
                             : stock <= 5
@@ -620,20 +522,20 @@ export default function POSPage() {
                               : 'bg-green-50 text-green-600 dark:bg-green-950 dark:text-green-300',
                         )}
                       >
-                        {stock <= 0 ? 'نفد' : `المخزون ${stock}`}
+                        {stockLabel}
                       </span>
                     </div>
 
-                    <div>
-                      <p className="line-clamp-2 text-sm font-bold text-gray-900 dark:text-white">
-                        {product.nameAr || product.name}
+                    <div className="flex flex-1 flex-col justify-between p-3">
+                      <p className="line-clamp-2 min-h-[40px] text-sm font-bold leading-5 text-gray-900 dark:text-white">
+                        {productLabel}
                       </p>
-                      <p className="mt-1 text-lg font-black text-brand-500">
+                      <p className="mt-2 text-lg font-black text-brand-500">
                         {formatCurrency(product.price, currency)}
                       </p>
-                      <div className="mt-2 flex items-center justify-between text-[11px] text-gray-400">
-                        <span>{product.category?.nameAr || product.category?.name || 'بدون فئة'}</span>
-                        <span className="font-mono">{product.barcode || 'No barcode'}</span>
+                      <div className="mt-3 flex items-center justify-between gap-2 text-[11px] text-gray-400">
+                        <span className="truncate">{categoryLabel}</span>
+                        <span className="shrink-0 rounded-full bg-gray-50 px-2 py-0.5 font-mono dark:bg-gray-800">{product.barcode || product.sku || 'بدون باركود'}</span>
                       </div>
                     </div>
                   </button>
@@ -704,24 +606,10 @@ export default function POSPage() {
             setShowReceipt(false);
             setLastSale(null);
           }}
-          onPrint={() => {
-            thermalPrinter.printReceipt({
-              storeName: tenant?.name || '',
-              storeNameAr: tenant?.nameAr || 'أولاد أيمن للأدوات المنزلية',
-              invoiceNumber: lastSale.invoiceNumber || '',
-              date: new Date(lastSale.createdAt).toLocaleString('ar-EG'),
-              cashierName: `${user?.firstName} ${user?.lastName}`,
-              items: lastSale.items || [],
-              subtotal: lastSale.subtotal,
-              discountAmount: lastSale.discountAmount,
-              taxAmount: lastSale.taxAmount,
-              total: lastSale.total,
-              paidAmount: lastSale.paidAmount,
-              changeAmount: lastSale.changeAmount,
-              paymentMethod: lastSale.paymentMethod,
-              currency,
-              paperSize,
-            });
+          onPrint={async () => {
+            const printResult = await thermalPrinter.printReceipt(buildReceiptData(lastSale), cashierPrinter);
+            if (printResult.ok) toast.success(printResult.message);
+            else toast.error(printResult.message);
           }}
         />
       )}

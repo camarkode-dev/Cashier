@@ -1,5 +1,8 @@
+'use client';
+
 import { cn } from '@/lib/utils';
 import { BrandMark } from '@/components/common/BrandMark';
+import { useAuthStore } from '@/stores/auth.store';
 
 interface LogoProps {
   size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
@@ -20,7 +23,10 @@ const BRAND_SUBTITLE = 'للأدوات المنزلية';
 
 export function Logo({ size = 'md', variant = 'full', className }: LogoProps) {
   const s = sizes[size];
-  const icon = <BrandMark size={s.icon} title={BRAND_NAME} />;
+  const tenantLogo = useAuthStore((state) => state.tenant?.logo);
+  const tenantName = useAuthStore((state) => state.tenant?.nameAr || state.tenant?.name);
+  const brandName = tenantName || BRAND_NAME;
+  const icon = <BrandMark size={s.icon} title={brandName} src={tenantLogo} />;
 
   if (variant === 'icon') {
     return <div className={cn('flex items-center', className)}>{icon}</div>;
@@ -35,7 +41,7 @@ export function Logo({ size = 'md', variant = 'full', className }: LogoProps) {
             style={{ fontSize: s.fontSize + 2 }}
             className="font-black text-gray-900 dark:text-white whitespace-nowrap"
           >
-            {BRAND_NAME}
+            {brandName}
           </span>
           <span
             style={{ fontSize: s.fontSize - 2 }}
@@ -53,7 +59,7 @@ export function Logo({ size = 'md', variant = 'full', className }: LogoProps) {
       {icon}
       <div className="text-center leading-tight">
         <div style={{ fontSize: s.fontSize + 2 }} className="font-black text-gray-900 dark:text-white">
-          {BRAND_NAME}
+          {brandName}
         </div>
         <div style={{ fontSize: s.fontSize - 1 }} className="font-semibold text-brand-500">
           {BRAND_SUBTITLE}

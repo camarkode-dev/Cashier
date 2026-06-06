@@ -49,7 +49,11 @@ export function ReceiptModal({ sale, tenant, cashierName, currency, onClose, onP
             {/* Store header */}
             <div className="text-center mb-4">
               <div className="flex justify-center mb-2">
-                <Logo size="sm" variant="icon" />
+                {tenant?.logo ? (
+                  <img src={tenant.logo} alt="لوجو المتجر" className="h-10 w-10 rounded-lg object-contain" />
+                ) : (
+                  <Logo size="sm" variant="icon" />
+                )}
               </div>
               <p className="font-black text-base">{tenant?.nameAr || tenant?.name || 'أولاد أيمن للأدوات المنزلية'}</p>
               {tenant?.address && <p className="text-gray-500">{tenant.address}</p>}

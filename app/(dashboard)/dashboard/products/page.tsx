@@ -93,13 +93,15 @@ export default function ProductsPage() {
         return;
       }
     }
+    const barcode = form.barcode.trim();
+    const sku = form.sku.trim();
     const payload = {
       name: form.name.trim() || form.nameAr.trim(),
       nameAr: form.nameAr.trim() || undefined,
       price: parseFloat(form.price),
       costPrice: parseFloat(form.costPrice || '0'),
-      barcode: form.barcode.trim() || undefined,
-      sku: form.sku.trim() || undefined,
+      barcode: barcode || (editing ? null : undefined),
+      sku: sku || (editing ? null : undefined),
       categoryId,
       minStock: parseInt(form.minStock || '5'),
       taxRate: form.taxRate ? parseFloat(form.taxRate) : undefined,

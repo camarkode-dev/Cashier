@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 import { useState, useEffect } from 'react';
 import { salesApi } from '@/lib/api';
 import { resolveAppCurrency } from '@/lib/currency';
@@ -13,7 +13,7 @@ import { apiClient } from '@/lib/api';
 
 export default function SalesPage() {
   const { tenant, user } = useAuthStore();
-  const { country: settingsCountry, currency: settingsCurrency, paperSize } = useSettingsStore();
+  const { country: settingsCountry, currency: settingsCurrency, cashierPrinter } = useSettingsStore();
   const [sales, setSales] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<any>(null);
@@ -65,9 +65,10 @@ export default function SalesPage() {
       toast.success('تم الاسترداد');
       setRefundSale(null);
       // Print refund receipt
-      await thermalPrinter.printReceipt({
+      const printResult = await thermalPrinter.printReceipt({
         storeName: tenant?.name || '',
         storeNameAr: tenant?.nameAr || tenant?.name || '',
+        logoUrl: tenant?.logo || '/logo-mark.png',
         invoiceNumber: refundSale.invoiceNumber || '',
         date: new Date().toLocaleString('ar-EG'),
         cashierName: user ? `${user.firstName} ${user.lastName}` : '',
@@ -90,10 +91,11 @@ export default function SalesPage() {
         changeAmount: 0,
         paymentMethod: refundSale.paymentMethod || 'CASH',
         currency: cur,
-        paperSize: paperSize as any,
+        paperSize: cashierPrinter.paperWidth,
         isRefund: true,
         refundReason: refundReason.trim(),
-      });
+      }, cashierPrinter);
+      if (!printResult.ok) toast.error(printResult.message);
       load();
     } catch (err: any) {
       toast.error(err?.message || 'تعذر الاسترداد');
@@ -105,9 +107,10 @@ export default function SalesPage() {
   const handlePrint = async (s: any) => {
     setPrinting(s.id);
     try {
-      await thermalPrinter.printReceipt({
+      const printResult = await thermalPrinter.printReceipt({
         storeName: tenant?.name || '',
         storeNameAr: tenant?.nameAr || tenant?.name || '',
+        logoUrl: tenant?.logo || '/logo-mark.png',
         invoiceNumber: s.invoiceNumber || '',
         date: new Date(s.createdAt).toLocaleString('ar-EG'),
         cashierName: s.user ? `${s.user.firstName} ${s.user.lastName}` : (user ? `${user.firstName} ${user.lastName}` : ''),
@@ -130,10 +133,12 @@ export default function SalesPage() {
         changeAmount: s.changeAmount || 0,
         paymentMethod: s.paymentMethod || 'CASH',
         currency: cur,
-        paperSize: paperSize as any,
-      });
-    } catch {
-      toast.error('تعذرت الطباعة');
+        paperSize: cashierPrinter.paperWidth,
+      }, cashierPrinter);
+      if (printResult.ok) toast.success(printResult.message);
+      else toast.error(printResult.message);
+    } catch (error: any) {
+      toast.error(error?.message || 'تعذرت الطباعة');
     } finally {
       setPrinting(null);
     }

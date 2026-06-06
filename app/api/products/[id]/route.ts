@@ -84,8 +84,20 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     ]);
 
     if (saleItemCount > 0 || transferItemCount > 0) {
-      await prisma.product.update({ where: { id: params.id }, data: { isActive: false } });
-      await audit(dbUser.id, 'DELETE', 'product', params.id, { archived: true });
+      const existingProduct = await prisma.product.findUnique({
+        where: { id: params.id },
+        select: { barcode: true, sku: true },
+      });
+
+      await prisma.product.update({
+        where: { id: params.id },
+        data: { isActive: false, barcode: null, sku: null },
+      });
+      await audit(dbUser.id, 'DELETE', 'product', params.id, {
+        archived: true,
+        releasedBarcode: existingProduct?.barcode,
+        releasedSku: existingProduct?.sku,
+      });
       return ok({ message: 'تم أرشفة المنتج (له سجل مبيعات لا يمكن حذفه نهائياً)' });
     }
 

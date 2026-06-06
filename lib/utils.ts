@@ -1,4 +1,4 @@
-import { type ClassValue, clsx } from 'clsx';
+﻿import { type ClassValue, clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { getLocaleForCurrency } from '@/lib/currency';
 
@@ -83,11 +83,11 @@ export function getRoleLabel(role: string, lang: 'ar' | 'en' = 'ar') {
 export function getPaymentMethodLabel(method: string, lang: 'ar' | 'en' = 'ar') {
   const labels: Record<string, { ar: string; en: string }> = {
     CASH: { ar: 'نقدي', en: 'Cash' },
-    CARD: { ar: 'بطاقة', en: 'Card' },
-    MOBILE: { ar: 'محفظة إلكترونية', en: 'Mobile Wallet' },
-    QR: { ar: 'محفظة إلكترونية', en: 'E-Wallet' },
+    CARD: { ar: 'Card', en: 'Card' },
+    MOBILE: { ar: 'Vodafone Cash', en: 'Vodafone Cash' },
+    QR: { ar: 'InstaPay', en: 'InstaPay' },
     SPLIT: { ar: 'دفع مقسم', en: 'Split Payment' },
-    CREDIT: { ar: 'آجر', en: 'Credit' },
+    CREDIT: { ar: 'آجل', en: 'Credit' },
   };
   return labels[method]?.[lang] || method;
 }

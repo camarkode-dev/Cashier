@@ -6,6 +6,13 @@ const optionalTrimmedString = z.preprocess((value) => {
   return trimmed === '' ? undefined : trimmed;
 }, z.string().optional());
 
+const nullableTrimmedString = z.preprocess((value) => {
+  if (value === null) return null;
+  if (typeof value !== 'string') return value;
+  const trimmed = value.trim();
+  return trimmed === '' ? null : trimmed;
+}, z.string().nullable().optional());
+
 // ─── Auth ────────────────────────────────────────────────────────────────────
 
 export const loginSchema = z.object({
@@ -18,8 +25,8 @@ export const loginSchema = z.object({
 export const productSchema = z.object({
   name: z.string().min(1),
   nameAr: optionalTrimmedString,
-  sku: optionalTrimmedString,
-  barcode: optionalTrimmedString,
+  sku: nullableTrimmedString,
+  barcode: nullableTrimmedString,
   price: z.number().nonnegative(),
   costPrice: z.number().nonnegative().default(0),
   taxRate: z.number().min(0).max(100).default(0),
@@ -154,6 +161,7 @@ export const tenantSettingsSchema = z.object({
   name: z.string().min(1),
   nameAr: z.string().optional(),
   phone: z.string().optional(),
+  logo: z.string().max(1_500_000).optional().nullable(),
   currency: z.string().min(3).max(3).default('EGP'),
   taxRate: z.number().min(0).max(100).default(0),
   country: z.string().optional(),
