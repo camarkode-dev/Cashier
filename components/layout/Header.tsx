@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useTheme } from 'next-themes';
-import { Menu, Bell, Sun, Moon, ShoppingCart, Wifi, WifiOff, RefreshCw } from 'lucide-react';
+import { Menu, Bell, Sun, Moon, ShoppingCart, Store, Wifi, WifiOff, RefreshCw } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth.store';
 import { useSettingsStore } from '@/stores/settings.store';
 import { notificationsApi } from '@/lib/api';
@@ -57,6 +57,11 @@ export function Header({ onMenuClick, title }: HeaderProps) {
         </div>
 
         {/* POS shortcut */}
+        <Link href="/" className="flex items-center gap-2 border border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200 px-3 py-1.5 rounded-xl text-sm font-semibold transition-colors">
+          <Store size={16} />
+          <span className="hidden sm:inline">المتجر</span>
+        </Link>
+
         <Link href="/pos" className="flex items-center gap-2 bg-brand-500 hover:bg-brand-600 text-white px-3 py-1.5 rounded-xl text-sm font-semibold transition-colors">
           <ShoppingCart size={16} />
           <span className="hidden sm:inline">البيع</span>

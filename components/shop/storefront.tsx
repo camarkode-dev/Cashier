@@ -13,11 +13,10 @@ import { cn, formatCurrency } from '@/lib/utils';
 import { BrandMark } from '@/components/common/BrandMark';
 import {
   ArrowUpDown,
-  Check,
   Crown,
   Filter,
+  Images,
   LayoutDashboard,
-  Loader2,
   Minus,
   Moon,
   Plus,
@@ -110,6 +109,8 @@ export function ShopStorefront() {
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [pendingCheckout, setPendingCheckout] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<CatalogProduct | null>(null);
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [catalogUnavailable, setCatalogUnavailable] = useState(false);
   const loadCatalogRef = useRef<(withSpinner?: boolean) => void>(() => {});
 
@@ -185,9 +186,11 @@ export function ShopStorefront() {
   const renderedCurrency = mounted ? currency : 'EGP';
   const cartCount = renderedCart.reduce((sum, item) => sum + item.quantity, 0);
   const cartSubtotal = renderedCart.reduce((sum, item) => sum + (item.price || 0) * item.quantity, 0);
-  const totalStock = visibleProducts.reduce((sum, product) => sum + Math.max(product.stock || 0, 0), 0);
   const canAccessDashboard = !!user?.isActive && DASHBOARD_ROLES.has(user.role);
   const isDark = theme === 'dark';
+  const selectedImages = selectedProduct ? normalizeImages(selectedProduct) : [];
+  const selectedPrice = selectedProduct ? priceInfo(selectedProduct) : null;
+  const selectedInCart = selectedProduct ? renderedCart.find((item) => item.productId === selectedProduct.id) : null;
 
   const onAddToCart = (product: CatalogProduct) => {
     addItem(
@@ -213,6 +216,11 @@ export function ShopStorefront() {
       return;
     }
     setCheckoutOpen(true);
+  };
+
+  const openProductDetails = (product: CatalogProduct) => {
+    setSelectedProduct(product);
+    setSelectedImageIndex(0);
   };
 
   const handleCheckoutClick = () => {
@@ -246,7 +254,7 @@ export function ShopStorefront() {
               <BrandMark size={56} title="أولاد أيمن" />
               <div>
                 <h1 className="text-2xl font-black text-gray-900 dark:text-white">أولاد أيمن للأدوات المنزلية</h1>
-                <p className="text-sm text-gray-500">متجر إلكتروني متصل بنظام البيع والمخزون داخل الفرع</p>
+                <p className="text-sm text-gray-500">اختيارات منزلية عملية بتصميم عصري، جودة موثوقة، وتجربة شراء سهلة لكل احتياجات البيت اليومية.</p>
               </div>
             </div>
 
@@ -273,20 +281,6 @@ export function ShopStorefront() {
                 السلة
                 <span className="rounded-full bg-brand-500 px-2 py-0.5 text-xs text-white">{cartCount}</span>
               </button>
-            </div>
-          </div>
-          <div className="mt-4 grid gap-2 sm:grid-cols-3">
-            <div className="rounded-2xl border border-gray-100 bg-gray-50 px-3 py-2 dark:border-gray-800 dark:bg-gray-950">
-              <p className="text-[11px] font-semibold text-gray-500">الكتالوج</p>
-              <p className="mt-1 text-sm font-black text-gray-900 dark:text-white">{catalog.products.length} منتج متاح</p>
-            </div>
-            <div className="rounded-2xl border border-gray-100 bg-gray-50 px-3 py-2 dark:border-gray-800 dark:bg-gray-950">
-              <p className="text-[11px] font-semibold text-gray-500">التصنيفات</p>
-              <p className="mt-1 text-sm font-black text-gray-900 dark:text-white">{catalog.categories.length} قسم منظم</p>
-            </div>
-            <div className="rounded-2xl border border-gray-100 bg-gray-50 px-3 py-2 dark:border-gray-800 dark:bg-gray-950">
-              <p className="text-[11px] font-semibold text-gray-500">المخزون</p>
-              <p className="mt-1 text-sm font-black text-gray-900 dark:text-white">{totalStock} قطعة جاهزة للبيع</p>
             </div>
           </div>
         </div>
@@ -366,35 +360,46 @@ export function ShopStorefront() {
                   return (
                     <article
                       key={product.id}
-                      className="overflow-hidden rounded-[18px] border border-gray-200 bg-white shadow-sm transition-transform duration-150 hover:-translate-y-0.5 hover:shadow-md dark:border-gray-800 dark:bg-gray-900"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => openProductDetails(product)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          openProductDetails(product);
+                        }
+                      }}
+                      className="cursor-pointer overflow-hidden rounded-[18px] border border-gray-200 bg-white shadow-sm transition-transform duration-150 hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-brand-400 dark:border-gray-800 dark:bg-gray-900"
                     >
-                      <Link href={`/product/${product.id}`} className="block">
-                        <div className="relative aspect-[4/3] bg-gray-100 dark:bg-gray-800">
-                          <img
-                            src={images[0] || '/placeholder.png'}
-                            alt={productTitle(product)}
-                            className="h-full w-full object-cover"
-                            loading="lazy"
-                          />
-                          {original ? (
-                            <div className="absolute start-3 top-3 rounded-full bg-emerald-500 px-2.5 py-1 text-xs font-bold text-white">
-                              خصم
-                            </div>
-                          ) : null}
-                          {typeof product.stock === 'number' ? (
-                            <div className={cn('absolute end-3 top-3 rounded-full px-2.5 py-1 text-xs font-bold', product.stock > 0 ? 'bg-white/90 text-gray-900' : 'bg-red-500 text-white')}>
-                              {product.stock > 0 ? `متاح ${product.stock}` : 'غير متوفر'}
-                            </div>
-                          ) : null}
-                        </div>
-                      </Link>
+                      <div className="relative aspect-[4/3] bg-gray-100 dark:bg-gray-800">
+                        <img
+                          src={images[0] || '/placeholder.png'}
+                          alt={productTitle(product)}
+                          className="h-full w-full object-cover"
+                          loading="lazy"
+                        />
+                        {images.length > 1 ? (
+                          <div className="absolute start-3 bottom-3 flex items-center gap-1 rounded-full bg-black/55 px-2.5 py-1 text-xs font-bold text-white">
+                            <Images size={13} />
+                            {images.length}
+                          </div>
+                        ) : null}
+                        {original ? (
+                          <div className="absolute start-3 top-3 rounded-full bg-emerald-500 px-2.5 py-1 text-xs font-bold text-white">
+                            خصم
+                          </div>
+                        ) : null}
+                        {typeof product.stock === 'number' ? (
+                          <div className={cn('absolute end-3 top-3 rounded-full px-2.5 py-1 text-xs font-bold', product.stock > 0 ? 'bg-white/90 text-gray-900' : 'bg-red-500 text-white')}>
+                            {product.stock > 0 ? `متاح ${product.stock}` : 'غير متوفر'}
+                          </div>
+                        ) : null}
+                      </div>
 
                       <div className="space-y-3 p-4">
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
-                            <Link href={`/product/${product.id}`} className="block">
-                              <h3 className="truncate text-base font-black text-gray-900 dark:text-white">{productTitle(product)}</h3>
-                            </Link>
+                            <h3 className="truncate text-base font-black text-gray-900 dark:text-white">{productTitle(product)}</h3>
                             <p className="mt-1 line-clamp-2 text-xs leading-5 text-gray-500">
                               {product.description || 'وصف مختصر غير متوفر حالياً'}
                             </p>
@@ -418,7 +423,10 @@ export function ShopStorefront() {
                         <div className="flex items-center justify-between gap-2">
                           <button
                             type="button"
-                            onClick={() => onAddToCart(product)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              onAddToCart(product);
+                            }}
                             className="flex flex-1 items-center justify-center gap-2 rounded-2xl border border-gray-200 px-3 py-2.5 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-800 dark:text-gray-300 dark:hover:bg-gray-800"
                           >
                             <Plus size={15} />
@@ -426,7 +434,10 @@ export function ShopStorefront() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => onBuyNow(product)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              onBuyNow(product);
+                            }}
                             className="btn-brand flex items-center gap-2 px-4 py-2.5"
                           >
                             شراء الآن
@@ -549,6 +560,151 @@ export function ShopStorefront() {
           إتمام الطلب
         </button>
       </div>
+
+      {selectedProduct ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+          onClick={() => setSelectedProduct(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={productTitle(selectedProduct)}
+            className="max-h-[92dvh] w-full max-w-5xl overflow-hidden rounded-[20px] border border-gray-200 bg-white shadow-2xl dark:border-gray-800 dark:bg-gray-900"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4 dark:border-gray-800">
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-brand-600 dark:text-brand-300">تفاصيل المنتج</p>
+                <h2 className="truncate text-xl font-black text-gray-900 dark:text-white">{productTitle(selectedProduct)}</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedProduct(null)}
+                className="rounded-xl p-2 text-gray-400 transition-colors hover:bg-gray-100 dark:hover:bg-gray-800"
+                aria-label="إغلاق"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="grid max-h-[calc(92dvh-73px)] overflow-y-auto lg:grid-cols-[1.08fr_0.92fr]">
+              <div className="space-y-3 bg-gray-50 p-4 dark:bg-gray-950/40">
+                <div className="overflow-hidden rounded-[18px] border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+                  <div className="relative aspect-[4/3] bg-gray-100 dark:bg-gray-800">
+                    <img
+                      src={selectedImages[selectedImageIndex] || selectedProduct.image || '/placeholder.png'}
+                      alt={productTitle(selectedProduct)}
+                      className="h-full w-full object-cover"
+                    />
+                    {selectedPrice?.original ? (
+                      <div className="absolute start-4 top-4 rounded-full bg-emerald-500 px-3 py-1 text-xs font-bold text-white">
+                        خصم متاح
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
+                  {(selectedImages.length ? selectedImages : ['/placeholder.png']).map((image, index) => (
+                    <button
+                      key={`${image}-${index}`}
+                      type="button"
+                      onClick={() => setSelectedImageIndex(index)}
+                      className={cn(
+                        'aspect-square overflow-hidden rounded-xl border-2 bg-white transition-colors dark:bg-gray-900',
+                        selectedImageIndex === index ? 'border-brand-500' : 'border-transparent hover:border-gray-300 dark:hover:border-gray-700',
+                      )}
+                    >
+                      <img src={image} alt={`${productTitle(selectedProduct)} ${index + 1}`} className="h-full w-full object-cover" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-5 p-5">
+                <div>
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-bold text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                      {selectedProduct.category?.nameAr || selectedProduct.category?.name || 'عام'}
+                    </span>
+                    {typeof selectedProduct.stock === 'number' ? (
+                      <span className={cn('rounded-full px-3 py-1 text-xs font-bold', selectedProduct.stock > 0 ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950' : 'bg-red-50 text-red-500 dark:bg-red-950')}>
+                        {selectedProduct.stock > 0 ? `متاح ${selectedProduct.stock}` : 'غير متوفر'}
+                      </span>
+                    ) : null}
+                  </div>
+                  <h3 className="text-2xl font-black text-gray-900 dark:text-white">{productTitle(selectedProduct)}</h3>
+                  <p className="mt-3 text-sm leading-7 text-gray-500">
+                    {selectedProduct.description || 'لا يوجد وصف تفصيلي لهذا المنتج حالياً.'}
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-end gap-3 rounded-2xl bg-brand-50 p-4 dark:bg-brand-950/40">
+                  <span className="text-3xl font-black text-brand-600 dark:text-brand-300">
+                    {formatCurrency(selectedPrice?.current || 0, renderedCurrency)}
+                  </span>
+                  {selectedPrice?.original ? (
+                    <span className="text-base text-gray-400 line-through">
+                      {formatCurrency(selectedPrice.original, renderedCurrency)}
+                    </span>
+                  ) : null}
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-2xl border border-gray-100 p-3 dark:border-gray-800">
+                    <p className="text-xs font-semibold text-gray-400">SKU</p>
+                    <p className="mt-1 font-bold text-gray-900 dark:text-white">{selectedProduct.sku || 'غير محدد'}</p>
+                  </div>
+                  <div className="rounded-2xl border border-gray-100 p-3 dark:border-gray-800">
+                    <p className="text-xs font-semibold text-gray-400">الباركود</p>
+                    <p className="mt-1 font-bold text-gray-900 dark:text-white">{selectedProduct.barcode || 'غير محدد'}</p>
+                  </div>
+                  <div className="rounded-2xl border border-gray-100 p-3 dark:border-gray-800">
+                    <p className="text-xs font-semibold text-gray-400">الضريبة</p>
+                    <p className="mt-1 font-bold text-gray-900 dark:text-white">{selectedProduct.taxRate || 0}%</p>
+                  </div>
+                  <div className="rounded-2xl border border-gray-100 p-3 dark:border-gray-800">
+                    <p className="text-xs font-semibold text-gray-400">الخصم</p>
+                    <p className="mt-1 font-bold text-gray-900 dark:text-white">
+                      {selectedProduct.discountPercent ? `${selectedProduct.discountPercent}%` : selectedPrice?.original ? 'سعر مخفض' : 'لا يوجد'}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-gray-100 p-3 dark:border-gray-800">
+                    <p className="text-xs font-semibold text-gray-400">تاريخ الإضافة</p>
+                    <p className="mt-1 font-bold text-gray-900 dark:text-white">
+                      {new Date(selectedProduct.createdAt).toLocaleDateString('ar-EG')}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-gray-100 p-3 dark:border-gray-800">
+                    <p className="text-xs font-semibold text-gray-400">داخل السلة</p>
+                    <p className="mt-1 font-bold text-gray-900 dark:text-white">{selectedInCart?.quantity || 0} قطعة</p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2 border-t border-gray-100 pt-4 dark:border-gray-800">
+                  <button
+                    type="button"
+                    onClick={() => onAddToCart(selectedProduct)}
+                    className="btn-ghost flex items-center gap-2 border border-gray-200 dark:border-gray-800"
+                  >
+                    <Plus size={16} />
+                    إضافة للسلة
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onBuyNow(selectedProduct)}
+                    className="btn-brand flex items-center gap-2"
+                  >
+                    <ShoppingCart size={16} />
+                    شراء الآن
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} onSuccess={handleAuthSuccess} />
       <CheckoutModal open={checkoutOpen} onClose={() => setCheckoutOpen(false)} currency={renderedCurrency} />

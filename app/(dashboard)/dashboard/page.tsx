@@ -6,7 +6,7 @@ import { useAuthStore } from '@/stores/auth.store';
 import { useSettingsStore } from '@/stores/settings.store';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
-import { TrendingUp, ShoppingBag, Users, Package, AlertTriangle, ArrowUpRight, ShoppingCart } from 'lucide-react';
+import { TrendingUp, ShoppingBag, Users, Package, AlertTriangle, ArrowUpRight, ShoppingCart, Store } from 'lucide-react';
 import Link from 'next/link';
 
 interface DashStats {
@@ -79,10 +79,16 @@ export default function DashboardPage() {
           <h2 className="text-xl font-black text-gray-900 dark:text-white">لوحة التحكم</h2>
           <p className="text-sm text-gray-500">{tenant?.nameAr || tenant?.name}</p>
         </div>
-        <Link href="/pos" className="btn-brand flex items-center gap-2">
-          <ShoppingCart size={18} />
-          <span className="hidden sm:inline">بدء البيع</span>
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link href="/" className="btn-ghost flex items-center gap-2 border border-gray-200 dark:border-gray-800">
+            <Store size={18} />
+            <span className="hidden sm:inline">المتجر</span>
+          </Link>
+          <Link href="/pos" className="btn-brand flex items-center gap-2">
+            <ShoppingCart size={18} />
+            <span className="hidden sm:inline">بدء البيع</span>
+          </Link>
+        </div>
       </div>
 
       {/* Low stock alert */}
