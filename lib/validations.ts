@@ -202,7 +202,7 @@ export const shopCheckoutSchema = z.object({
   customerEmail: z.string().email(),
   customerPhone: optionalTrimmedString,
   branchId: optionalTrimmedString,
-  paymentMethod: z.enum(['CASH', 'BANK_TRANSFER', 'INSTAPAY', 'VODAFONE_CASH', 'CREDIT']),
+  paymentMethod: z.enum(['CASH', 'INSTAPAY', 'VODAFONE_CASH']),
   installmentPercentage: z.number().min(0).max(100).default(0),
   items: z.array(shopCartItemSchema).min(1),
   notes: optionalTrimmedString,

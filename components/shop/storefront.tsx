@@ -71,6 +71,8 @@ const SORT_OPTIONS = [
   { value: 'name', label: 'الاسم' },
 ] as const;
 
+const DASHBOARD_ROLES = new Set(['OWNER', 'ADMIN', 'CASHIER']);
+
 function normalizeImages(product: CatalogProduct) {
   const gallery = Array.isArray(product.galleryImages) ? product.galleryImages : [];
   const images = gallery
@@ -107,7 +109,7 @@ export function ShopStorefront() {
   const [authOpen, setAuthOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [pendingCheckout, setPendingCheckout] = useState(false);
-  const [canAccessDashboard, setCanAccessDashboard] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const [catalogUnavailable, setCatalogUnavailable] = useState(false);
   const loadCatalogRef = useRef<(withSpinner?: boolean) => void>(() => {});
 
@@ -141,6 +143,7 @@ export function ShopStorefront() {
   }, [categoryId, search, sort]);
 
   useEffect(() => {
+    setMounted(true);
     initialize();
   }, [initialize]);
 
@@ -161,24 +164,6 @@ export function ShopStorefront() {
   }, [categoryId, loadCatalog, search]);
 
   useEffect(() => {
-    const checkAccess = async () => {
-      try {
-        const res = await fetch('/api/auth/me', { cache: 'no-store' });
-        if (!res.ok) {
-          setCanAccessDashboard(false);
-          return;
-        }
-        const json = await res.json();
-        const role = json?.data?.role;
-        setCanAccessDashboard(role === 'OWNER' || role === 'ADMIN');
-      } catch {
-        setCanAccessDashboard(false);
-      }
-    };
-    checkAccess();
-  }, [user?.id]);
-
-  useEffect(() => {
     const supabase = createClient();
     const channel = supabase
       .channel('shop-catalog')
@@ -196,7 +181,12 @@ export function ShopStorefront() {
   }, [loadCatalog]);
 
   const visibleProducts = useMemo(() => catalog.products, [catalog.products]);
-  const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
+  const renderedCart = mounted ? cart : [];
+  const renderedCurrency = mounted ? currency : 'EGP';
+  const cartCount = renderedCart.reduce((sum, item) => sum + item.quantity, 0);
+  const cartSubtotal = renderedCart.reduce((sum, item) => sum + (item.price || 0) * item.quantity, 0);
+  const totalStock = visibleProducts.reduce((sum, product) => sum + Math.max(product.stock || 0, 0), 0);
+  const canAccessDashboard = !!user?.isActive && DASHBOARD_ROLES.has(user.role);
   const isDark = theme === 'dark';
 
   const onAddToCart = (product: CatalogProduct) => {
@@ -255,8 +245,8 @@ export function ShopStorefront() {
             <div className="flex items-center gap-3">
               <BrandMark size={56} title="أولاد أيمن" />
               <div>
-                <h1 className="text-2xl font-black text-gray-900 dark:text-white">أولاد أيمن</h1>
-                <p className="text-sm text-gray-500">متجر إلكتروني مباشر داخل النظام</p>
+                <h1 className="text-2xl font-black text-gray-900 dark:text-white">أولاد أيمن للأدوات المنزلية</h1>
+                <p className="text-sm text-gray-500">متجر إلكتروني متصل بنظام البيع والمخزون داخل الفرع</p>
               </div>
             </div>
 
@@ -283,6 +273,20 @@ export function ShopStorefront() {
                 السلة
                 <span className="rounded-full bg-brand-500 px-2 py-0.5 text-xs text-white">{cartCount}</span>
               </button>
+            </div>
+          </div>
+          <div className="mt-4 grid gap-2 sm:grid-cols-3">
+            <div className="rounded-2xl border border-gray-100 bg-gray-50 px-3 py-2 dark:border-gray-800 dark:bg-gray-950">
+              <p className="text-[11px] font-semibold text-gray-500">الكتالوج</p>
+              <p className="mt-1 text-sm font-black text-gray-900 dark:text-white">{catalog.products.length} منتج متاح</p>
+            </div>
+            <div className="rounded-2xl border border-gray-100 bg-gray-50 px-3 py-2 dark:border-gray-800 dark:bg-gray-950">
+              <p className="text-[11px] font-semibold text-gray-500">التصنيفات</p>
+              <p className="mt-1 text-sm font-black text-gray-900 dark:text-white">{catalog.categories.length} قسم منظم</p>
+            </div>
+            <div className="rounded-2xl border border-gray-100 bg-gray-50 px-3 py-2 dark:border-gray-800 dark:bg-gray-950">
+              <p className="text-[11px] font-semibold text-gray-500">المخزون</p>
+              <p className="mt-1 text-sm font-black text-gray-900 dark:text-white">{totalStock} قطعة جاهزة للبيع</p>
             </div>
           </div>
         </div>
@@ -357,7 +361,7 @@ export function ShopStorefront() {
                 {visibleProducts.map((product) => {
                   const { current, original } = priceInfo(product);
                   const images = normalizeImages(product);
-                  const inCart = cart.find((item) => item.productId === product.id);
+                  const inCart = renderedCart.find((item) => item.productId === product.id);
 
                   return (
                     <article
@@ -402,11 +406,11 @@ export function ShopStorefront() {
 
                         <div className="flex items-baseline gap-2">
                           <span className="text-lg font-black text-brand-600 dark:text-brand-300">
-                            {formatCurrency(current, currency)}
+                            {formatCurrency(current, renderedCurrency)}
                           </span>
                           {original ? (
                             <span className="text-sm text-gray-400 line-through">
-                              {formatCurrency(original, currency)}
+                              {formatCurrency(original, renderedCurrency)}
                             </span>
                           ) : null}
                         </div>
@@ -457,8 +461,8 @@ export function ShopStorefront() {
             ) : (
               <div className="rounded-[18px] border border-dashed border-gray-300 bg-white py-20 text-center dark:border-gray-800 dark:bg-gray-900">
                 <ShoppingBag size={34} className="mx-auto text-gray-300" />
-                <p className="mt-4 text-base font-bold text-gray-900 dark:text-white">لا توجد منتجات مطابقة</p>
-                <p className="mt-1 text-sm text-gray-500">جرّب تعديل البحث أو اختيار تصنيف آخر</p>
+                <p className="mt-4 text-base font-bold text-gray-900 dark:text-white">لا توجد أدوات منزلية مطابقة</p>
+                <p className="mt-1 text-sm text-gray-500">جرّب اسم منتج، باركود، أو تصنيف مختلف من كتالوج أولاد أيمن</p>
               </div>
             )}
           </div>
@@ -470,7 +474,7 @@ export function ShopStorefront() {
                   <ShoppingCart size={18} className="text-brand-500" />
                   <h2 className="font-black text-gray-900 dark:text-white">السلة</h2>
                 </div>
-                {cart.length > 0 ? (
+                {renderedCart.length > 0 ? (
                   <button onClick={clearCart} className="rounded-xl p-2 text-gray-400 transition-colors hover:bg-gray-100 dark:hover:bg-gray-800">
                     <Trash2 size={16} />
                   </button>
@@ -478,20 +482,20 @@ export function ShopStorefront() {
               </div>
 
               <div className="max-h-[calc(100vh-280px)] overflow-y-auto p-4">
-                {cart.length === 0 ? (
+                {renderedCart.length === 0 ? (
                   <div className="rounded-2xl border border-dashed border-gray-200 p-8 text-center dark:border-gray-800">
                     <ShoppingCart size={32} className="mx-auto text-gray-300" />
                     <p className="mt-3 text-sm font-semibold text-gray-500">السلة فارغة</p>
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {cart.map((item) => (
+                    {renderedCart.map((item) => (
                       <div key={item.productId} className="rounded-2xl border border-gray-100 p-3 dark:border-gray-800">
                         <div className="flex gap-3">
                           <img src={item.image || '/placeholder.png'} alt={item.nameAr || item.name} className="h-14 w-14 rounded-xl object-cover" />
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-sm font-bold text-gray-900 dark:text-white">{item.nameAr || item.name}</p>
-                            <p className="text-xs text-gray-400">{formatCurrency(item.price, currency)} × {item.quantity}</p>
+                            <p className="text-xs text-gray-400">{formatCurrency(item.price, renderedCurrency)} × {item.quantity}</p>
                           </div>
                           <button type="button" onClick={() => removeItem(item.productId)} className="rounded-lg text-gray-300 hover:text-red-500">
                             <X size={16} />
@@ -506,7 +510,7 @@ export function ShopStorefront() {
                             <Plus size={12} />
                           </button>
                           <span className="ms-auto text-sm font-black text-brand-600 dark:text-brand-300">
-                            {formatCurrency(item.price * item.quantity, currency)}
+                            {formatCurrency(item.price * item.quantity, renderedCurrency)}
                           </span>
                         </div>
                       </div>
@@ -523,7 +527,7 @@ export function ShopStorefront() {
                   </div>
                   <div className="flex items-center justify-between text-gray-500">
                     <span>الإجمالي</span>
-                    <span>{formatCurrency(useShopStore.getState().subtotal(), currency)}</span>
+                    <span>{formatCurrency(cartSubtotal, renderedCurrency)}</span>
                   </div>
                 </div>
                 <button onClick={handleCheckoutClick} className="btn-brand mt-4 flex w-full items-center justify-center gap-2 py-3">
@@ -538,7 +542,7 @@ export function ShopStorefront() {
       <div className="fixed bottom-4 start-4 end-4 z-20 flex items-center justify-between gap-2 rounded-[18px] border border-gray-200 bg-white/95 px-4 py-3 shadow-lg backdrop-blur xl:hidden dark:border-gray-800 dark:bg-gray-900/95">
         <div className="min-w-0">
           <p className="text-xs text-gray-500">السلة</p>
-          <p className="truncate text-sm font-bold text-gray-900 dark:text-white">{formatCurrency(useShopStore.getState().subtotal(), currency)}</p>
+          <p className="truncate text-sm font-bold text-gray-900 dark:text-white">{formatCurrency(cartSubtotal, renderedCurrency)}</p>
         </div>
         <button onClick={handleCheckoutClick} className="btn-brand flex items-center gap-2">
           <ShoppingCart size={16} />
@@ -547,7 +551,7 @@ export function ShopStorefront() {
       </div>
 
       <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} onSuccess={handleAuthSuccess} />
-      <CheckoutModal open={checkoutOpen} onClose={() => setCheckoutOpen(false)} currency={currency} />
+      <CheckoutModal open={checkoutOpen} onClose={() => setCheckoutOpen(false)} currency={renderedCurrency} />
     </>
   );
 }

@@ -7,6 +7,8 @@ import { ok, unauthorized, handleError, created } from '@/lib/api-utils';
 import { shopCheckoutSchema } from '@/lib/validations';
 import { uploadShopReceiptImage } from '@/lib/shop-storage';
 
+const MAX_RECEIPT_TOTAL_BYTES = 4 * 1024 * 1024;
+
 async function getShopAuthUser() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -70,6 +72,10 @@ export async function POST(req: NextRequest) {
     const receiptFiles = payload
       ? payload.getAll('receiptFiles').filter((value): value is File => value instanceof File)
       : [];
+    const totalReceiptSize = receiptFiles.reduce((sum, file) => sum + file.size, 0);
+    if (totalReceiptSize > MAX_RECEIPT_TOTAL_BYTES) {
+      throw new Error('حجم إيصالات الدفع أكبر من المسموح. الحد الأقصى 4 ميجابايت');
+    }
 
     const customer = await ensureCustomerRecord({
       name: validated.customerName,
@@ -125,7 +131,7 @@ export async function POST(req: NextRequest) {
       if (!file.type.startsWith('image/')) {
         throw new Error('يجب أن تكون إيصالات الدفع صورًا فقط');
       }
-      if (file.size > 7 * 1024 * 1024) {
+      if (file.size > MAX_RECEIPT_TOTAL_BYTES) {
         throw new Error('حجم الصورة أكبر من المسموح');
       }
       uploadedReceipts.push(await uploadShopReceiptImage(file));

@@ -4,10 +4,11 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { formatCurrency, cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth.store';
 import { useShopStore, type ShopCartItem } from '@/stores/shop.store';
-import { CheckCircle2, Camera, Copy, CreditCard, Landmark, Loader2, Minus, Plus, ReceiptText, Smartphone, Trash2, Upload, X } from 'lucide-react';
+import { CheckCircle2, Camera, Copy, CreditCard, Landmark, Loader2, Minus, Plus, Smartphone, Trash2, Upload, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-type PaymentMethod = 'CASH' | 'BANK_TRANSFER' | 'INSTAPAY' | 'VODAFONE_CASH' | 'CREDIT';
+type PaymentMethod = 'CASH' | 'INSTAPAY' | 'VODAFONE_CASH';
+type TransferPaymentMethod = Exclude<PaymentMethod, 'CASH'>;
 
 type ReceiptFileItem = {
   id: string;
@@ -22,15 +23,10 @@ type CheckoutModalProps = {
   currency: string;
 };
 
-const TRANSFER_METHODS: PaymentMethod[] = ['BANK_TRANSFER', 'INSTAPAY', 'VODAFONE_CASH'];
+const TRANSFER_METHODS: TransferPaymentMethod[] = ['INSTAPAY', 'VODAFONE_CASH'];
+const MAX_RECEIPT_TOTAL_BYTES = 4 * 1024 * 1024;
 
 const transferDetails = {
-  BANK_TRANSFER: {
-    label: 'تحويل بنكي / تحويل إلكتروني',
-    accountName: 'Mar Kode',
-    phone: '01090886364',
-    email: 'ca.markode@gmail.com',
-  },
   INSTAPAY: {
     label: 'إنستاباي',
     accountName: 'Mar Kode',
@@ -46,9 +42,11 @@ const transferDetails = {
 } as const;
 
 function sanitizeFiles(files: FileList | File[]) {
+  let totalSize = 0;
   return Array.from(files).filter((file) => {
     if (!file.type.startsWith('image/')) return false;
-    return file.size <= 7 * 1024 * 1024;
+    totalSize += file.size;
+    return totalSize <= MAX_RECEIPT_TOTAL_BYTES;
   });
 }
 
@@ -62,7 +60,6 @@ export function CheckoutModal({ open, onClose, onSuccess, currency }: CheckoutMo
   const [customerPhone, setCustomerPhone] = useState('');
   const [notes, setNotes] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
-  const [installmentPercentage, setInstallmentPercentage] = useState('0');
   const [receiptFiles, setReceiptFiles] = useState<ReceiptFileItem[]>([]);
 
   const grossSubtotal = useMemo(
@@ -86,11 +83,7 @@ export function CheckoutModal({ open, onClose, onSuccess, currency }: CheckoutMo
     [cart],
   );
   const baseTotal = Math.max(0, grossSubtotal - discountAmount + taxAmount);
-  const installmentValue =
-    paymentMethod === 'CREDIT'
-      ? (baseTotal * Math.min(100, Math.max(0, Number(installmentPercentage) || 0))) / 100
-      : 0;
-  const total = baseTotal + installmentValue;
+  const total = baseTotal;
 
   useEffect(() => {
     if (!open) return;
@@ -106,23 +99,22 @@ export function CheckoutModal({ open, onClose, onSuccess, currency }: CheckoutMo
       setReceiptFiles([]);
       setNotes('');
       setPaymentMethod('CASH');
-      setInstallmentPercentage('0');
     }
   }, [open, receiptFiles]);
 
-  const requiredTransfer = TRANSFER_METHODS.includes(paymentMethod);
+  const requiredTransfer = paymentMethod !== 'CASH';
+  const transferMethod = requiredTransfer ? (paymentMethod as TransferPaymentMethod) : null;
 
   const canSubmit =
     cart.length > 0 &&
     customerName.trim().length >= 2 &&
     customerEmail.trim().length > 3 &&
-    (!requiredTransfer || receiptFiles.length > 0) &&
-    (!paymentMethod || paymentMethod !== 'CREDIT' || (Number(installmentPercentage) >= 0 && Number(installmentPercentage) <= 100));
+    (!requiredTransfer || receiptFiles.length > 0);
 
   const handleFiles = (files: FileList | File[]) => {
     const valid = sanitizeFiles(files);
     if (valid.length !== files.length) {
-      toast.error('تأكد من أن الملفات صور وبحجم لا يتجاوز 7 ميجابايت');
+      toast.error('تأكد أن الإيصالات صور وبحجم إجمالي لا يتجاوز 4 ميجابايت');
     }
 
     setReceiptFiles((current) => [
@@ -168,7 +160,7 @@ export function CheckoutModal({ open, onClose, onSuccess, currency }: CheckoutMo
           customerEmail: customerEmail.trim(),
           customerPhone: customerPhone.trim() || undefined,
           paymentMethod,
-          installmentPercentage: paymentMethod === 'CREDIT' ? Math.min(100, Math.max(0, Number(installmentPercentage) || 0)) : 0,
+          installmentPercentage: 0,
           items: cart.map((item) => ({
             productId: item.productId,
             quantity: item.quantity,
@@ -246,10 +238,8 @@ export function CheckoutModal({ open, onClose, onSuccess, currency }: CheckoutMo
                 <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
                   {([
                     { id: 'CASH', label: 'نقدي', icon: CreditCard },
-                    { id: 'BANK_TRANSFER', label: 'تحويل', icon: Landmark },
                     { id: 'INSTAPAY', label: 'إنستا باي', icon: Smartphone },
                     { id: 'VODAFONE_CASH', label: 'فودافون كاش', icon: Smartphone },
-                    { id: 'CREDIT', label: 'آجل', icon: ReceiptText },
                   ] as const).map((method) => {
                     const Icon = method.icon;
                     const active = paymentMethod === method.id;
@@ -273,41 +263,22 @@ export function CheckoutModal({ open, onClose, onSuccess, currency }: CheckoutMo
                 </div>
               </div>
 
-              {paymentMethod === 'CREDIT' && (
-                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950/40">
-                  <label className="label">نسبة التقسيط %</label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="1"
-                    value={installmentPercentage}
-                    onChange={(e) => setInstallmentPercentage(e.target.value.replace(/[^\d]/g, ''))}
-                    className="input"
-                    dir="ltr"
-                  />
-                  <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
-                    النسبة تُضاف إلى إجمالي الطلب مباشرة ويتم حفظها داخل الفاتورة والتقرير.
-                  </p>
-                </div>
-              )}
-
               {requiredTransfer && (
                 <div className="space-y-3 rounded-2xl border border-orange-200 bg-orange-50 p-4 dark:border-orange-900 dark:bg-orange-950/40">
                   <div className="flex items-center gap-2 text-sm font-bold text-orange-700 dark:text-orange-300">
                     <Landmark size={16} />
-                    {transferDetails[paymentMethod as keyof typeof transferDetails].label}
+                    {transferMethod ? transferDetails[transferMethod].label : null}
                   </div>
                   <div className="grid gap-3 md:grid-cols-3">
-                    <button type="button" onClick={() => copyText(transferDetails[paymentMethod as keyof typeof transferDetails].phone)} className="rounded-2xl bg-white px-3 py-3 text-start text-sm shadow-sm dark:bg-gray-900">
+                    <button type="button" onClick={() => transferMethod && copyText(transferDetails[transferMethod].phone)} className="rounded-2xl bg-white px-3 py-3 text-start text-sm shadow-sm dark:bg-gray-900">
                       <span className="block text-xs text-gray-400">Instapay / Vodafone</span>
                       <span className="block font-bold text-gray-900 dark:text-white">01090886364</span>
                     </button>
-                    <button type="button" onClick={() => copyText(transferDetails[paymentMethod as keyof typeof transferDetails].accountName)} className="rounded-2xl bg-white px-3 py-3 text-start text-sm shadow-sm dark:bg-gray-900">
+                    <button type="button" onClick={() => transferMethod && copyText(transferDetails[transferMethod].accountName)} className="rounded-2xl bg-white px-3 py-3 text-start text-sm shadow-sm dark:bg-gray-900">
                       <span className="block text-xs text-gray-400">صاحب الحساب</span>
                       <span className="block font-bold text-gray-900 dark:text-white">Mar Kode</span>
                     </button>
-                    <button type="button" onClick={() => copyText(transferDetails[paymentMethod as keyof typeof transferDetails].email)} className="rounded-2xl bg-white px-3 py-3 text-start text-sm shadow-sm dark:bg-gray-900">
+                    <button type="button" onClick={() => transferMethod && copyText(transferDetails[transferMethod].email)} className="rounded-2xl bg-white px-3 py-3 text-start text-sm shadow-sm dark:bg-gray-900">
                       <span className="block text-xs text-gray-400">البريد الرئيسي</span>
                       <span className="block truncate font-bold text-gray-900 dark:text-white">ca.markode@gmail.com</span>
                     </button>
@@ -433,12 +404,6 @@ export function CheckoutModal({ open, onClose, onSuccess, currency }: CheckoutMo
                     <span>الضريبة</span>
                     <span>{formatCurrency(taxAmount, currency)}</span>
                   </div>
-                  {paymentMethod === 'CREDIT' && (
-                    <div className="flex items-center justify-between text-gray-500">
-                      <span>التقسيط</span>
-                      <span>{formatCurrency(installmentValue, currency)}</span>
-                    </div>
-                  )}
                   <div className="mt-3 flex items-center justify-between border-t border-gray-100 pt-3 text-lg font-black text-gray-900 dark:border-gray-800 dark:text-white">
                     <span>الإجمالي النهائي</span>
                     <span>{formatCurrency(total, currency)}</span>

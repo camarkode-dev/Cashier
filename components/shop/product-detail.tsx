@@ -62,8 +62,10 @@ export function ProductDetail({ productId }: { productId: string }) {
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [pendingBuyNow, setPendingBuyNow] = useState(false);
   const [databaseUnavailable, setDatabaseUnavailable] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     initialize();
   }, [initialize]);
 
@@ -94,7 +96,9 @@ export function ProductDetail({ productId }: { productId: string }) {
 
   const images = useMemo(() => normalizeImages(data?.product.galleryImages), [data]);
   const product = data?.product;
-  const currentCart = cart.find((item) => item.productId === productId);
+  const renderedCart = mounted ? cart : [];
+  const renderedCurrency = mounted ? currency : 'EGP';
+  const currentCart = renderedCart.find((item) => item.productId === productId);
 
   const addProduct = () => {
     if (!product) return;
@@ -234,8 +238,8 @@ export function ProductDetail({ productId }: { productId: string }) {
               <p className="mt-2 text-sm leading-6 text-gray-500">{product.description || 'وصف المنتج غير متوفر حالياً'}</p>
 
               <div className="mt-5 flex items-end gap-3">
-                <span className="text-3xl font-black text-brand-600 dark:text-brand-300">{formatCurrency(product.price, currency)}</span>
-                {original ? <span className="text-lg text-gray-400 line-through">{formatCurrency(original, currency)}</span> : null}
+                <span className="text-3xl font-black text-brand-600 dark:text-brand-300">{formatCurrency(product.price, renderedCurrency)}</span>
+                {original ? <span className="text-lg text-gray-400 line-through">{formatCurrency(original, renderedCurrency)}</span> : null}
               </div>
 
               <div className="mt-5 grid gap-3 sm:grid-cols-2">
@@ -282,9 +286,9 @@ export function ProductDetail({ productId }: { productId: string }) {
                         <img src={item.image || '/placeholder.png'} alt={productLabel(item)} className="h-16 w-16 rounded-xl object-cover" />
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-bold text-gray-900 dark:text-white">{productLabel(item)}</p>
-                          <p className="text-xs text-gray-500">{formatCurrency(item.price, currency)}</p>
+                          <p className="text-xs text-gray-500">{formatCurrency(item.price, renderedCurrency)}</p>
                         </div>
-                        {itemOriginal ? <span className="text-xs text-gray-400 line-through">{formatCurrency(itemOriginal, currency)}</span> : null}
+                        {itemOriginal ? <span className="text-xs text-gray-400 line-through">{formatCurrency(itemOriginal, renderedCurrency)}</span> : null}
                       </Link>
                     );
                   })
@@ -298,7 +302,7 @@ export function ProductDetail({ productId }: { productId: string }) {
       </div>
 
       <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} onSuccess={handleAuthSuccess} />
-      <CheckoutModal open={checkoutOpen} onClose={() => setCheckoutOpen(false)} currency={currency} />
+      <CheckoutModal open={checkoutOpen} onClose={() => setCheckoutOpen(false)} currency={renderedCurrency} />
     </>
   );
 }
