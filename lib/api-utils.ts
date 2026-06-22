@@ -168,3 +168,27 @@ export async function generateInvoiceNumber(branchId?: string) {
 
   return `INV-${dateKey}-${String(count + 1).padStart(4, '0')}`;
 }
+
+export async function generateCreditInvoiceNumber() {
+  const date = new Date();
+  const dateKey = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}`;
+  const count = await prisma.creditInvoice.count({
+    where: {
+      createdAt: { gte: new Date(date.setHours(0, 0, 0, 0)) },
+    },
+  });
+
+  return `CRD-${dateKey}-${String(count + 1).padStart(4, '0')}`;
+}
+
+export async function generateCreditPaymentNumber() {
+  const date = new Date();
+  const dateKey = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}`;
+  const count = await prisma.creditPayment.count({
+    where: {
+      createdAt: { gte: new Date(date.setHours(0, 0, 0, 0)) },
+    },
+  });
+
+  return `CRP-${dateKey}-${String(count + 1).padStart(4, '0')}`;
+}

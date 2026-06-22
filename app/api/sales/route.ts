@@ -2,12 +2,27 @@ export const dynamic = 'force-dynamic';
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import {
-  getAuthUser, ok, created, unauthorized, forbidden, handleError, audit,
+  getAuthUser,
+  ok,
+  created,
+  unauthorized,
+  handleError,
+  audit,
   generateInvoiceNumber,
+  generateCreditInvoiceNumber,
 } from '@/lib/api-utils';
 import { saleSchema } from '@/lib/validations';
+import { extractPaymentReceiptImage, stripPaymentReceiptImage } from '@/lib/payment-receipt';
 
-// ─── List sales ──────────────────────────────────────────────────────────────
+function parseReferenceNumber(notes?: string | null) {
+  if (!notes) return undefined;
+  const match = notes.match(/رقم المرجع:\s*([^\n|]+)/);
+  return match?.[1]?.trim() || undefined;
+}
+
+function cleanPaymentNotes(notes?: string | null) {
+  return stripPaymentReceiptImage(notes || undefined) || undefined;
+}
 
 export async function GET(req: NextRequest) {
   const { dbUser } = await getAuthUser();
@@ -36,8 +51,14 @@ export async function GET(req: NextRequest) {
       where,
       include: {
         items: true,
+        payments: { orderBy: { createdAt: 'asc' } },
+        creditInvoice: {
+          include: {
+            payments: { orderBy: { createdAt: 'asc' } },
+          },
+        },
         user: { select: { id: true, firstName: true, lastName: true } },
-        customer: { select: { id: true, name: true, nameAr: true, phone: true } },
+        customer: { select: { id: true, name: true, nameAr: true, phone: true, accountBalance: true } },
         branch: { select: { id: true, name: true, nameAr: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -50,8 +71,6 @@ export async function GET(req: NextRequest) {
   return ok({ data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } });
 }
 
-// ─── Create sale ─────────────────────────────────────────────────────────────
-
 export async function POST(req: NextRequest) {
   const { dbUser } = await getAuthUser();
   if (!dbUser) return unauthorized();
@@ -59,20 +78,27 @@ export async function POST(req: NextRequest) {
   try {
     const body = saleSchema.parse(await req.json());
 
-    // Check for duplicate offline sale
     if (body.offlineId) {
       const existing = await prisma.sale.findUnique({ where: { offlineId: body.offlineId } });
       if (existing) return ok({ ...existing, duplicate: true });
     }
 
     const invoiceNumber = await generateInvoiceNumber(body.branchId);
+    const paymentRows = body.payments && body.payments.length > 0
+      ? body.payments
+      : body.paymentMethod === 'SPLIT'
+        ? []
+        : [{
+            method: body.paymentMethod,
+            amount: body.paidAmount,
+            notes: body.paymentNotes || body.notes,
+          }];
 
     const sale = await prisma.$transaction(async (tx) => {
       let subtotal = 0;
       let totalTax = 0;
       let totalProfit = 0;
 
-      // Validate & compute each item
       const enrichedItems = await Promise.all(
         body.items.map(async (item) => {
           const product = await tx.product.findUnique({
@@ -92,10 +118,7 @@ export async function POST(req: NextRequest) {
           totalTax += taxAmt;
           totalProfit += profit;
 
-          // Deduct inventory — lock row to prevent concurrent oversell
-          const [inv] = await tx.$queryRaw<
-            Array<{ id: string; quantity: number; minStock: number }>
-          >`
+          const [inv] = await tx.$queryRaw<Array<{ id: string; quantity: number; minStock: number }>>`
             SELECT id, quantity, "minStock"
             FROM "Inventory"
             WHERE "productId" = ${item.productId} AND "branchId" = ${body.branchId}
@@ -104,9 +127,7 @@ export async function POST(req: NextRequest) {
 
           if (!inv || inv.quantity < item.quantity) {
             const productLabel = product?.nameAr || product?.name || item.name;
-            throw new Error(
-              `مخزون غير كافٍ للمنتج ${productLabel}. المتاح: ${inv?.quantity ?? 0}`,
-            );
+            throw new Error(`المخزون غير كافٍ للمنتج ${productLabel}. المتاح: ${inv?.quantity ?? 0}`);
           }
 
           const newQty = inv.quantity - item.quantity;
@@ -115,7 +136,6 @@ export async function POST(req: NextRequest) {
             data: { quantity: newQty },
           });
 
-          // Low-stock alert — only if no unread alert already exists for this product
           if (newQty <= inv.minStock) {
             const existingAlert = await tx.notification.findFirst({
               where: {
@@ -158,15 +178,25 @@ export async function POST(req: NextRequest) {
         }),
       );
 
-      // Invoice-level discount
       const invoiceDisc = body.discountAmount || (subtotal * (body.discountPercent || 0)) / 100;
       const finalTotal = subtotal - invoiceDisc + totalTax;
-      const changeAmount = Math.max(0, body.paidAmount - finalTotal);
+      const paymentTotal = paymentRows.reduce((sum, row) => sum + row.amount, 0);
+      const changeAmount = Math.max(0, paymentTotal - finalTotal);
+      const customerId = body.customerId || null;
 
-      // Update customer loyalty
-      if (body.customerId) {
+      if (body.paymentMethod === 'CREDIT' && !customerId) {
+        throw new Error('يجب اختيار العميل قبل حفظ فاتورة آجل');
+      }
+      if (body.paymentMethod !== 'CREDIT' && paymentTotal < finalTotal) {
+        throw new Error('المبلغ المدفوع أقل من إجمالي الفاتورة');
+      }
+      if (body.paymentMethod === 'SPLIT' && Math.abs(paymentTotal - finalTotal) > 0.01) {
+        throw new Error('إجمالي طرق الدفع المقسمة يجب أن يساوي إجمالي الفاتورة');
+      }
+
+      if (customerId) {
         await tx.customer.update({
-          where: { id: body.customerId },
+          where: { id: customerId },
           data: {
             loyaltyPoints: { increment: Math.floor(finalTotal / 10) },
             totalSpent: { increment: finalTotal },
@@ -174,17 +204,16 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      const saleStatus = body.paymentMethod === 'CREDIT' && body.paidAmount < finalTotal
-        ? 'PARTIAL'
-        : 'COMPLETED';
+      const saleStatus = body.paymentMethod === 'CREDIT' && paymentTotal < finalTotal ? 'PARTIAL' : 'COMPLETED';
+      const salePaidAmount = body.paymentMethod === 'CREDIT' ? body.paidAmount : paymentTotal;
 
-      return tx.sale.create({
+      const createdSale = await tx.sale.create({
         data: {
           invoiceNumber,
           offlineId: body.offlineId,
           branchId: body.branchId,
           userId: dbUser.id,
-          customerId: body.customerId,
+          customerId,
           status: saleStatus as any,
           paymentMethod: body.paymentMethod as any,
           subtotal,
@@ -192,20 +221,87 @@ export async function POST(req: NextRequest) {
           taxAmount: totalTax,
           total: finalTotal,
           profit: totalProfit - invoiceDisc,
-          paidAmount: body.paidAmount,
+          paidAmount: salePaidAmount,
           changeAmount,
           notes: body.notes,
           items: { createMany: { data: enrichedItems } },
-        },
-        include: {
-          items: true,
-          customer: { select: { id: true, name: true, phone: true } },
-          branch: { select: { id: true, name: true, nameAr: true } },
+          payments: body.paymentMethod === 'CREDIT'
+            ? undefined
+            : {
+                create: paymentRows.map((row) => ({
+                  amount: row.amount,
+                  method: row.method as any,
+                  notes: cleanPaymentNotes(row.notes),
+                  referenceNumber: parseReferenceNumber(row.notes),
+                  receiptImage: extractPaymentReceiptImage(row.notes),
+                })),
+              },
         },
       });
+
+      if (body.paymentMethod === 'CREDIT' && customerId) {
+        const creditInvoiceNumber = await generateCreditInvoiceNumber();
+        const remainingAmount = Math.max(0, finalTotal - salePaidAmount);
+        const creditInvoice = await tx.creditInvoice.create({
+          data: {
+            invoiceNumber: creditInvoiceNumber,
+            saleId: createdSale.id,
+            branchId: body.branchId,
+            customerId,
+            userId: dbUser.id,
+            totalAmount: finalTotal,
+            paidAmount: salePaidAmount,
+            remainingAmount,
+            status: remainingAmount > 0 ? (salePaidAmount > 0 ? 'PARTIAL' : 'UNPAID') : 'PAID',
+            notes: body.notes,
+          },
+        });
+
+        await tx.customer.update({
+          where: { id: customerId },
+          data: {
+            accountBalance: { increment: remainingAmount },
+          },
+        });
+
+        await tx.customerTransaction.create({
+          data: {
+            customerId,
+            creditInvoiceId: creditInvoice.id,
+            saleId: createdSale.id,
+            type: 'SALE_DEBT',
+            debit: remainingAmount,
+            credit: 0,
+            balanceAfter: remainingAmount,
+            notes: body.notes || 'فاتورة آجل',
+            cashierId: dbUser.id,
+          },
+        });
+      }
+
+      const response = await tx.sale.findUnique({
+        where: { id: createdSale.id },
+        include: {
+          items: true,
+          payments: { orderBy: { createdAt: 'asc' } },
+          creditInvoice: {
+            include: { payments: { orderBy: { createdAt: 'asc' } } },
+          },
+          customer: { select: { id: true, name: true, phone: true, accountBalance: true } },
+          branch: { select: { id: true, name: true, nameAr: true } },
+          user: { select: { id: true, firstName: true, lastName: true } },
+        },
+      });
+
+      if (!response) throw new Error('تعذر إنشاء الفاتورة');
+      return response;
     });
 
-    await audit(dbUser.id, 'CREATE', 'sale', sale.id, { total: sale.total, invoiceNumber });
+    await audit(dbUser.id, 'CREATE', 'sale', sale.id, {
+      total: sale.total,
+      invoiceNumber,
+      paymentMethod: sale.paymentMethod,
+    });
     return created(sale);
   } catch (e) {
     return handleError(e);

@@ -14,8 +14,14 @@ export async function GET(_req: NextRequest, { params }: Params) {
     include: {
       items: { include: { product: { select: { id: true, name: true, nameAr: true, image: true } } } },
       user: { select: { id: true, firstName: true, lastName: true } },
-      customer: true,
+      customer: { select: { id: true, name: true, nameAr: true, phone: true, accountBalance: true } },
       branch: { select: { id: true, name: true, nameAr: true } },
+      payments: { orderBy: { createdAt: 'asc' } },
+      creditInvoice: {
+        include: {
+          payments: { orderBy: { createdAt: 'asc' } },
+        },
+      },
     },
   });
 
@@ -41,7 +47,14 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
     const sale = await prisma.sale.findUnique({
       where: { id: params.id },
-      include: { items: true, customer: true, user: true, branch: true },
+      include: {
+        items: true,
+        customer: true,
+        user: true,
+        branch: true,
+        payments: true,
+        creditInvoice: true,
+      },
     });
 
     if (!sale) return notFound('Sale');

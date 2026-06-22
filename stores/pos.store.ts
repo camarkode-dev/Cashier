@@ -37,6 +37,7 @@ interface POSState {
   setCustomer: (id: string | null, name: string | null) => void;
   setPaymentMethod: (method: string) => void;
   addSplitPayment: (method: string, amount: number) => void;
+  setSplitPayments: (payments: { method: string; amount: number }[]) => void;
   removeSplitPayment: (index: number) => void;
   setNotes: (notes: string) => void;
   clearCart: () => void;
@@ -139,6 +140,7 @@ export const usePOSStore = create<POSState>((set, get) => ({
   setCustomer: (id, name) => set({ customerId: id, customerName: name }),
   setPaymentMethod: (method) => set({ paymentMethod: method, splitPayments: [] }),
   addSplitPayment: (method, amount) => set((s) => ({ splitPayments: [...s.splitPayments, { method, amount }] })),
+  setSplitPayments: (payments) => set({ splitPayments: payments }),
   removeSplitPayment: (idx) => set((s) => ({ splitPayments: s.splitPayments.filter((_, i) => i !== idx) })),
   setNotes: (notes) => set({ notes }),
   clearCart: () => set({ cart: [], customerId: null, customerName: null, invoiceDiscount: 0, invoiceDiscountType: 'amount', paymentMethod: 'CASH', splitPayments: [], notes: '' }),
@@ -164,11 +166,19 @@ export const usePOSStore = create<POSState>((set, get) => ({
   checkout: async (paidAmount, tenantId, branchId, userId) => {
     const { cart, customerId, invoiceDiscount, invoiceDiscountType, paymentMethod, splitPayments, notes, total, clearCart } = get();
     if (!cart.length) throw new Error('السلة فارغة');
+    if (paymentMethod === 'CREDIT' && !customerId) throw new Error('يجب اختيار العميل قبل حفظ فاتورة آجل');
 
     set({ isProcessing: true });
     const offlineId = crypto.randomUUID();
     const invoiceTotal = total();
     const change = Math.max(0, paidAmount - invoiceTotal);
+
+    const salePayments = splitPayments.length > 0
+      ? splitPayments.map((payment) => ({
+          method: payment.method,
+          amount: payment.amount,
+        }))
+      : undefined;
 
     const salePayload = {
       branchId,
@@ -188,7 +198,7 @@ export const usePOSStore = create<POSState>((set, get) => ({
       discountPercent: invoiceDiscountType === 'percent' ? invoiceDiscount : undefined,
       paidAmount,
       paymentMethod: splitPayments.length > 0 ? 'SPLIT' : paymentMethod,
-      payments: splitPayments.length > 0 ? splitPayments : undefined,
+      payments: salePayments,
       notes: notes || undefined,
       offlineId,
     };
@@ -217,6 +227,7 @@ export const usePOSStore = create<POSState>((set, get) => ({
           paidAmount,
           changeAmount: change,
           paymentMethod,
+          payments: splitPayments.length > 0 ? splitPayments : undefined,
           notes: notes || undefined,
           status: 'pending_sync' as const,
           createdAt: new Date().toISOString(),

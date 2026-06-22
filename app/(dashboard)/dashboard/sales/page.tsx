@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { salesApi } from '@/lib/api';
 import { resolveAppCurrency } from '@/lib/currency';
-import { formatCurrency, formatDate, getPaymentMethodLabel } from '@/lib/utils';
+import { formatCurrency, formatDate, getPaymentMethodLabel, summarizePaymentMethods } from '@/lib/utils';
 import { ReceiptText, RotateCcw, Printer, PlusCircle, X, AlertTriangle, Eye } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth.store';
 import { cn } from '@/lib/utils';
@@ -91,7 +91,7 @@ export default function SalesPage() {
         total: refundSale.total,
         paidAmount: refundSale.paidAmount || refundSale.total,
         changeAmount: 0,
-        paymentMethod: refundSale.paymentMethod || 'CASH',
+        paymentMethod: refundSale.payments?.length ? summarizePaymentMethods(refundSale.payments) : refundSale.paymentMethod || 'CASH',
         currency: cur,
         paperSize: cashierPrinter.paperWidth,
         isRefund: true,
@@ -133,7 +133,7 @@ export default function SalesPage() {
         total: s.total,
         paidAmount: s.paidAmount || s.total,
         changeAmount: s.changeAmount || 0,
-        paymentMethod: s.paymentMethod || 'CASH',
+        paymentMethod: s.payments?.length ? summarizePaymentMethods(s.payments) : s.paymentMethod || 'CASH',
         currency: cur,
         paperSize: cashierPrinter.paperWidth,
       }, cashierPrinter);
@@ -197,7 +197,7 @@ export default function SalesPage() {
   };
   const statusLabels: Record<string, string> = {
     COMPLETED: 'مكتملة',
-    PARTIAL: 'آجر جزئي',
+    PARTIAL: 'آجل جزئي',
     REFUNDED: 'مستردة',
     VOID: 'ملغاة',
   };
@@ -253,7 +253,9 @@ export default function SalesPage() {
                       )}
                     </div>
                   </td>
-                  <td className="px-4 py-3 hidden md:table-cell text-gray-500">{getPaymentMethodLabel(s.paymentMethod)}</td>
+                  <td className="px-4 py-3 hidden md:table-cell text-gray-500">
+                    {s.payments?.length ? summarizePaymentMethods(s.payments) : getPaymentMethodLabel(s.paymentMethod)}
+                  </td>
                   <td className="px-4 py-3">
                     <span className={cn('px-2.5 py-1 rounded-full text-xs font-bold', statusColors[s.status] || '')}>
                       {statusLabels[s.status] || s.status}
@@ -372,7 +374,10 @@ export default function SalesPage() {
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div><p className="text-gray-400">العميل</p><p className="font-semibold">{selected.customer?.name || 'عميل عام'}</p></div>
                 <div><p className="text-gray-400">الكاشير</p><p className="font-semibold">{selected.user?.firstName} {selected.user?.lastName}</p></div>
-                <div><p className="text-gray-400">طريقة الدفع</p><p className="font-semibold">{getPaymentMethodLabel(selected.paymentMethod)}</p></div>
+                <div>
+                  <p className="text-gray-400">طريقة الدفع</p>
+                  <p className="font-semibold">{selected.payments?.length ? summarizePaymentMethods(selected.payments) : getPaymentMethodLabel(selected.paymentMethod)}</p>
+                </div>
                 <div><p className="text-gray-400">التاريخ</p><p className="font-semibold">{formatDate(selected.createdAt)}</p></div>
               </div>
               <div className="space-y-2">
@@ -522,7 +527,7 @@ export default function SalesPage() {
               <div>
                 <label className="label text-sm">طريقة الدفع</label>
                 <div className="grid grid-cols-3 gap-2">
-                  {[{ id: 'CASH', label: 'نقدي' }, { id: 'QR', label: 'محفظة' }, { id: 'CREDIT', label: 'آجر' }].map((m) => (
+                  {[{ id: 'CASH', label: 'نقدي' }, { id: 'QR', label: 'إنستا باي' }, { id: 'MOBILE', label: 'فودافون كاش' }].map((m) => (
                     <button
                       key={m.id}
                       type="button"

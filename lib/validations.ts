@@ -39,6 +39,7 @@ export const productSchema = z.object({
   taxRate: z.number().min(0).max(100).default(0),
   categoryId: optionalTrimmedString,
   image: imageString,
+  galleryImages: z.array(z.string().url().or(z.string().startsWith('data:'))).optional(),
   description: optionalTrimmedString,
   isActive: z.boolean().default(true),
   minStock: z.number().int().nonnegative().default(5),
@@ -64,16 +65,32 @@ export const saleItemSchema = z.object({
   taxRate: z.number().min(0).max(100).default(0),
 });
 
+export const salePaymentSchema = z.object({
+  method: z.enum(['CASH', 'CARD', 'MOBILE', 'QR', 'SPLIT', 'CREDIT']),
+  amount: z.number().positive(),
+  referenceNumber: optionalTrimmedString,
+  notes: optionalTrimmedString,
+});
+
 export const saleSchema = z.object({
   branchId: z.string(),
-  customerId: z.string().optional(),
+  customerId: optionalTrimmedString,
   items: z.array(saleItemSchema).min(1),
   discountAmount: z.number().nonnegative().default(0),
   discountPercent: z.number().min(0).max(100).default(0),
   paymentMethod: z.enum(['CASH', 'CARD', 'MOBILE', 'QR', 'SPLIT', 'CREDIT']).default('CASH'),
   paidAmount: z.number().nonnegative(),
-  notes: z.string().optional(),
+  payments: z.array(salePaymentSchema).optional(),
+  paymentNotes: optionalTrimmedString,
+  notes: optionalTrimmedString,
   offlineId: z.string().optional(),
+});
+
+export const creditPaymentSchema = z.object({
+  amount: z.number().positive(),
+  method: z.enum(['CASH', 'CARD', 'MOBILE', 'QR']).default('CASH'),
+  referenceNumber: optionalTrimmedString,
+  notes: optionalTrimmedString,
 });
 
 export const offlineSyncSchema = z.object({
@@ -112,6 +129,7 @@ export const customerSchema = z.object({
   email: z.string().email().optional().or(z.literal('')),
   phone: z.string().optional(),
   address: z.string().optional(),
+  notes: z.string().optional(),
 });
 
 // ─── Branches ────────────────────────────────────────────────────────────────
@@ -172,4 +190,20 @@ export const tenantSettingsSchema = z.object({
   currency: z.string().min(3).max(3).default('EGP'),
   taxRate: z.number().min(0).max(100).default(0),
   country: z.string().optional(),
+});
+
+export const shopCartItemSchema = z.object({
+  productId: z.string(),
+  quantity: z.number().int().positive(),
+});
+
+export const shopCheckoutSchema = z.object({
+  customerName: z.string().min(2),
+  customerEmail: z.string().email(),
+  customerPhone: optionalTrimmedString,
+  branchId: optionalTrimmedString,
+  paymentMethod: z.enum(['CASH', 'BANK_TRANSFER', 'INSTAPAY', 'VODAFONE_CASH', 'CREDIT']),
+  installmentPercentage: z.number().min(0).max(100).default(0),
+  items: z.array(shopCartItemSchema).min(1),
+  notes: optionalTrimmedString,
 });

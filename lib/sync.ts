@@ -107,6 +107,7 @@ class SyncEngine {
           discountAmount: s.discountAmount,
           paidAmount: s.paidAmount,
           paymentMethod: s.paymentMethod,
+          payments: s.payments,
           notes: s.notes,
           offlineId: s.offlineId,
         })),

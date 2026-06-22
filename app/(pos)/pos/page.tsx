@@ -18,7 +18,7 @@ import { categoriesApi, productsApi } from '@/lib/api';
 import { resolveAppCurrency } from '@/lib/currency';
 import { db } from '@/lib/db';
 import { thermalPrinter, type ReceiptData } from '@/lib/printing';
-import { cn, formatCurrency } from '@/lib/utils';
+import { cn, formatCurrency, summarizePaymentMethods } from '@/lib/utils';
 import { Logo } from '@/components/common/Logo';
 import { BarcodeScanner } from '@/components/pos/BarcodeScanner';
 import { CartPanel } from '@/components/pos/CartPanel';
@@ -187,7 +187,7 @@ export default function POSPage() {
         }
 
         if (!product) {
-          toast.error('لم يتم العثور على منتج بهذا الباركود');
+          toast.error('المنتج غير موجود');
           return;
         }
 
@@ -321,9 +321,14 @@ export default function POSPage() {
     total: sale.total || 0,
     paidAmount: sale.paidAmount ?? paidAmount ?? 0,
     changeAmount: sale.changeAmount || 0,
-    paymentMethod: sale.paymentMethod || 'CASH',
-    remainingAmount:
-      sale.status === 'PARTIAL' || (sale.paymentMethod === 'CREDIT' && (sale.paidAmount || 0) < (sale.total || 0))
+    paymentMethod: sale.payments?.length
+      ? summarizePaymentMethods(sale.payments)
+      : sale.creditInvoice
+        ? 'آجل'
+        : sale.paymentMethod || 'CASH',
+    remainingAmount: sale.creditInvoice
+      ? sale.creditInvoice.remainingAmount
+      : (sale.status === 'PARTIAL' || (sale.paymentMethod === 'CREDIT' && (sale.paidAmount || 0) < (sale.total || 0)))
         ? Math.max(0, (sale.total || 0) - (sale.paidAmount || 0))
         : undefined,
     currency,

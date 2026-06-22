@@ -102,10 +102,18 @@ export const salesApi = {
 export const customersApi = {
   list: (params?: any) => get('/customers', params),
   get: (id: string) => get(`/customers/${id}`),
+  statement: (id: string, params?: any) => get(`/customers/${id}/statement`, params),
   byPhone: (phone: string) => get('/customers', { phone }),
   create: (data: any) => post('/customers', data),
   update: (id: string, data: any) => put(`/customers/${id}`, data),
   delete: (id: string) => del(`/customers/${id}`),
+};
+
+export const creditInvoicesApi = {
+  list: (params?: any) => get('/credit-invoices', params),
+  get: (id: string) => get(`/credit-invoices/${id}`),
+  paymentHistory: (id: string) => get(`/credit-invoices/${id}/payments`),
+  addPayment: (id: string, data: any) => post(`/credit-invoices/${id}/payments`, data),
 };
 
 export const reportsApi = {

@@ -59,7 +59,10 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/icon.') ||
     pathname.startsWith('/apple-icon.');
 
-  const isPublicApi = pathname.startsWith('/api/auth') || pathname.startsWith('/api/setup');
+  const isPublicApi =
+    pathname.startsWith('/api/auth') ||
+    pathname.startsWith('/api/setup') ||
+    pathname.startsWith('/api/shop');
 
   if (isPublicPath || isPublicApi) {
     // Authenticated user trying to go to /login → send to dashboard

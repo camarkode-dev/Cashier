@@ -84,10 +84,22 @@ export function getPaymentMethodLabel(method: string, lang: 'ar' | 'en' = 'ar') 
   const labels: Record<string, { ar: string; en: string }> = {
     CASH: { ar: 'نقدي', en: 'Cash' },
     CARD: { ar: 'Card', en: 'Card' },
-    MOBILE: { ar: 'Vodafone Cash', en: 'Vodafone Cash' },
-    QR: { ar: 'InstaPay', en: 'InstaPay' },
+    MOBILE: { ar: 'فودافون كاش', en: 'Vodafone Cash' },
+    QR: { ar: 'إنستا باي', en: 'InstaPay' },
     SPLIT: { ar: 'دفع مقسم', en: 'Split Payment' },
     CREDIT: { ar: 'آجل', en: 'Credit' },
+    BANK_TRANSFER: { ar: 'تحويل بنكي', en: 'Bank Transfer' },
+    INSTAPAY: { ar: 'إنستا باي', en: 'InstaPay' },
+    VODAFONE_CASH: { ar: 'فودافون كاش', en: 'Vodafone Cash' },
   };
   return labels[method]?.[lang] || method;
+}
+
+export function summarizePaymentMethods(
+  payments?: Array<{ method: string; amount: number }>,
+  lang: 'ar' | 'en' = 'ar',
+) {
+  if (!payments?.length) return lang === 'ar' ? 'غير محدد' : 'Unspecified';
+  const labels = payments.map((payment) => getPaymentMethodLabel(payment.method, lang));
+  return Array.from(new Set(labels)).join(' + ');
 }

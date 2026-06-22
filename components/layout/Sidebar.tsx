@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils';
 import {
   LayoutDashboard, ShoppingCart, Package, Users,
   Settings, Truck, DollarSign, GitBranch, Bell, ShieldCheck,
-  LogOut, ChevronRight, ArrowLeftRight, ReceiptText, TrendingUp, Tag,
+  LogOut, ChevronRight, ArrowLeftRight, ReceiptText, TrendingUp, Tag, Landmark, ClipboardList,
 } from 'lucide-react';
 
 interface NavItem {
@@ -25,7 +25,9 @@ const navItems: NavItem[] = [
   { label: 'المنتجات', href: '/dashboard/products', icon: Package },
   { label: 'الفئات', href: '/dashboard/categories', icon: Tag, roles: ['OWNER', 'ADMIN'] },
   { label: 'العملاء', href: '/dashboard/customers', icon: Users },
+  { label: 'فواتير الآجل', href: '/dashboard/credit-invoices', icon: Landmark },
   { label: 'المبيعات', href: '/dashboard/sales', icon: ReceiptText },
+  { label: 'طلبات التطبيق', href: '/dashboard/app-orders', icon: ClipboardList, roles: ['OWNER', 'ADMIN'] },
   { label: 'المخزون', href: '/dashboard/inventory', icon: ArrowLeftRight, roles: ['OWNER', 'ADMIN'] },
   { label: 'الموردون', href: '/dashboard/suppliers', icon: Truck, roles: ['OWNER', 'ADMIN'] },
   { label: 'المصروفات', href: '/dashboard/expenses', icon: DollarSign, roles: ['OWNER', 'ADMIN'] },

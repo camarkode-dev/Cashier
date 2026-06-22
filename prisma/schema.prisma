@@ -32,6 +32,7 @@ model Sale {
   user           User          @relation(fields: [userId], references: [id])
   items          SaleItem[]
   payments       Payment[]
+  creditInvoice  CreditInvoice?
 
   @@index([branchId, createdAt])
   @@index([userId])
@@ -103,6 +104,10 @@ model User {
   auditLogs     AuditLog[]
   notifications Notification[]
   sales         Sale[]
+  creditInvoices CreditInvoice[]
+  creditPayments CreditPayment[]
+  customerTransactions CustomerTransaction[]
+  shopOrdersReviewed ShopOrder[] @relation("ShopOrderReviewer")
   transfersMade StockTransfer[]
   branch        Branch?         @relation(fields: [branchId], references: [id])
   tenant        Tenant?         @relation(fields: [tenantId], references: [id])
@@ -126,6 +131,9 @@ model Branch {
   tenant        Tenant?         @relation(fields: [tenantId], references: [id])
   inventory     Inventory[]
   sales         Sale[]
+  creditInvoices CreditInvoice[]
+  creditPayments CreditPayment[]
+  shopOrders    ShopOrder[]
   transfersFrom StockTransfer[] @relation("TransferFrom")
   transfersTo   StockTransfer[] @relation("TransferTo")
   users         User[]
@@ -151,10 +159,13 @@ model Product {
   barcode       String?             @unique
   qrCode        String?
   price         Float
+  compareAtPrice Float?
+  discountPercent Float?
   costPrice     Float               @default(0)
   taxRate       Float               @default(0)
   categoryId    String?
   image         String?
+  galleryImages Json?
   description   String?
   isActive      Boolean             @default(true)
   minStock      Int                 @default(5)
@@ -165,6 +176,7 @@ model Product {
   category      Category?           @relation(fields: [categoryId], references: [id])
   saleItems     SaleItem[]
   transferItems StockTransferItem[]
+  shopOrderItems ShopOrderItem[]
 
   @@index([barcode])
   @@index([categoryId])
@@ -192,13 +204,20 @@ model Customer {
   email         String?
   phone         String?  @unique
   address       String?
+  notes         String?
   loyaltyPoints Int      @default(0)
   totalSpent    Float    @default(0)
+  accountBalance Float   @default(0)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   sales         Sale[]
+  creditInvoices CreditInvoice[]
+  creditPayments CreditPayment[]
+  transactions  CustomerTransaction[]
+  shopOrders    ShopOrder[]
 
   @@index([phone])
+  @@index([accountBalance])
 }
 
 model SaleItem {
@@ -260,10 +279,82 @@ model Payment {
   saleId    String
   amount    Float
   method    PaymentMethod
+  referenceNumber String?
+  receiptImage String?
   notes     String?
   createdAt DateTime      @default(now())
   sale      Sale          @relation(fields: [saleId], references: [id])
 
+  @@index([saleId])
+}
+
+model CreditInvoice {
+  id             String               @id @default(cuid())
+  invoiceNumber  String               @unique
+  saleId         String               @unique
+  branchId       String
+  customerId     String
+  userId         String
+  totalAmount    Float
+  paidAmount     Float                @default(0)
+  remainingAmount Float
+  status         CreditInvoiceStatus  @default(UNPAID)
+  notes          String?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  sale           Sale                 @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  branch         Branch               @relation(fields: [branchId], references: [id])
+  customer       Customer             @relation(fields: [customerId], references: [id])
+  user           User                 @relation(fields: [userId], references: [id])
+  payments       CreditPayment[]
+  transactions   CustomerTransaction[]
+
+  @@index([customerId, createdAt])
+  @@index([status])
+  @@index([branchId, createdAt])
+}
+
+model CreditPayment {
+  id              String             @id @default(cuid())
+  creditInvoiceId String
+  customerId      String
+  branchId        String?
+  userId          String
+  amount          Float
+  method          PaymentMethod
+  referenceNumber  String?
+  notes           String?
+  previousBalance Float
+  remainingBalance Float
+  createdAt       DateTime           @default(now())
+  creditInvoice   CreditInvoice      @relation(fields: [creditInvoiceId], references: [id], onDelete: Cascade)
+  customer        Customer           @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  branch          Branch?            @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  user            User               @relation(fields: [userId], references: [id])
+
+  @@index([creditInvoiceId, createdAt])
+  @@index([customerId, createdAt])
+}
+
+model CustomerTransaction {
+  id             String                  @id @default(cuid())
+  customerId     String
+  creditInvoiceId String?
+  paymentId      String?
+  saleId         String?
+  type           CustomerTransactionType
+  debit          Float                   @default(0)
+  credit         Float                   @default(0)
+  balanceAfter   Float
+  notes          String?
+  cashierId      String?
+  createdAt      DateTime                @default(now())
+  customer       Customer                @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  creditInvoice  CreditInvoice?          @relation(fields: [creditInvoiceId], references: [id], onDelete: Cascade)
+  user           User?                   @relation(fields: [cashierId], references: [id], onDelete: SetNull)
+
+  @@index([customerId, createdAt])
+  @@index([creditInvoiceId])
   @@index([saleId])
 }
 
@@ -312,6 +403,61 @@ model Notification {
   @@index([createdAt])
 }
 
+model ShopOrder {
+  id                        String              @id @default(cuid())
+  orderNumber               String              @unique
+  authUserId                String?
+  branchId                  String?
+  customerId                String?
+  customerName              String
+  customerEmail             String
+  customerPhone             String?
+  paymentMethod             ShopPaymentMethod   @default(CASH)
+  status                    ShopOrderStatus     @default(PENDING_PAYMENT_REVIEW)
+  paymentReviewStatus       PaymentReviewStatus @default(PENDING_PAYMENT_REVIEW)
+  subtotalBeforeInstallment Float               @default(0)
+  installmentPercentage     Float               @default(0)
+  installmentAmount         Float               @default(0)
+  totalAfterInstallment     Float               @default(0)
+  discountAmount            Float               @default(0)
+  taxAmount                 Float               @default(0)
+  totalAmount               Float
+  notes                     String?
+  paymentReceiptImages      Json?
+  reviewerNotes             String?
+  reviewedById              String?
+  reviewedAt                DateTime?
+  createdAt                 DateTime            @default(now())
+  updatedAt                 DateTime            @updatedAt
+  branch                    Branch?             @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  customer                  Customer?           @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  reviewer                  User?               @relation("ShopOrderReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  items                     ShopOrderItem[]
+
+  @@index([status, createdAt])
+  @@index([paymentReviewStatus, createdAt])
+  @@index([customerEmail])
+  @@index([authUserId])
+}
+
+model ShopOrderItem {
+  id          String    @id @default(cuid())
+  shopOrderId String
+  productId   String?
+  name        String
+  nameAr      String?
+  image       String?
+  quantity    Int
+  unitPrice   Float
+  totalAmount Float
+  createdAt   DateTime  @default(now())
+  shopOrder   ShopOrder @relation(fields: [shopOrderId], references: [id], onDelete: Cascade)
+  product     Product?  @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([shopOrderId])
+  @@index([productId])
+}
+
 model AuditLog {
   id        String   @id @default(cuid())
   userId    String
@@ -350,6 +496,20 @@ enum PaymentMethod {
   CREDIT
 }
 
+enum CreditInvoiceStatus {
+  UNPAID
+  PARTIAL
+  PAID
+}
+
+enum CustomerTransactionType {
+  SALE_DEBT
+  PAYMENT
+  ADJUSTMENT
+  REFUND
+  OPENING
+}
+
 enum StockTransferStatus {
   PENDING
   COMPLETED
@@ -362,4 +522,26 @@ enum NotificationType {
   NEW_SALE
   SYSTEM
   INFO
+}
+
+enum ShopOrderStatus {
+  PENDING_PAYMENT_REVIEW
+  PAYMENT_REVIEWED
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum PaymentReviewStatus {
+  PENDING_PAYMENT_REVIEW
+  APPROVED
+  REJECTED
+}
+
+enum ShopPaymentMethod {
+  CASH
+  BANK_TRANSFER
+  INSTAPAY
+  VODAFONE_CASH
+  CREDIT
 }

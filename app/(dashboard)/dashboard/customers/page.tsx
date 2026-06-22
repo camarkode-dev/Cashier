@@ -1,9 +1,10 @@
 'use client';
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { customersApi } from '@/lib/api';
 import { resolveAppCurrency } from '@/lib/currency';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import { Plus, Search, Users, Edit2, Trash2, Star, Phone } from 'lucide-react';
+import { Plus, Search, Users, Edit2, Star, Phone, FileText } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '@/stores/auth.store';
 import { useSettingsStore } from '@/stores/settings.store';
@@ -69,7 +70,14 @@ export default function CustomersPage() {
             </div>
             <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-50 dark:border-gray-800 text-sm">
               <span className="flex items-center gap-1 text-amber-500 font-semibold"><Star size={13} /> {c.loyaltyPoints} نقطة</span>
-              <span className="text-gray-500">{formatCurrency(c.totalPurchases, cur)} إجمالي</span>
+              <span className="text-gray-500">{formatCurrency(c.totalSpent || 0, cur)} إجمالي</span>
+            </div>
+            <div className="mt-2 flex items-center justify-between text-xs">
+              <span className="text-red-500 font-semibold">الرصيد: {formatCurrency(c.accountBalance || 0, cur)}</span>
+              <Link href={`/dashboard/customers/${c.id}`} className="inline-flex items-center gap-1 text-brand-500 font-semibold">
+                <FileText size={13} />
+                كشف الحساب
+              </Link>
             </div>
           </div>
         ))}
